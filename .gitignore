@@ -1,0 +1,21 @@
+# Build output
+target/
+build/
+.gradle/
+*.class
+*.log
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# Segredos / credenciais (nunca versionar)
+*.asc
+*.gpg
+private-key*
+*.p12
+*.jks
+.env
+.env.*
+secring.*

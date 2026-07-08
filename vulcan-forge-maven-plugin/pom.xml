@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>io.github.dlduarte</groupId>
+        <artifactId>vulcan-forge-parent</artifactId>
+        <version>1.0.0</version>
+    </parent>
+
+    <artifactId>vulcan-forge-maven-plugin</artifactId>
+    <packaging>maven-plugin</packaging>
+    <name>Vulcan Forge Maven Plugin</name>
+    <description>Mojos para publicar imagem Docker e pacote Maven em Nexus / GitHub Packages.</description>
+
+    <properties>
+        <!-- prefixo do goal: vulcan-forge:docker-publish -->
+        <goalPrefix>vulcan-forge</goalPrefix>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>io.github.dlduarte</groupId>
+            <artifactId>vulcan-forge-core</artifactId>
+        </dependency>
+
+        <!-- Maven Plugin API (provided pelo runtime do Maven) -->
+        <dependency>
+            <groupId>org.apache.maven</groupId>
+            <artifactId>maven-plugin-api</artifactId>
+            <version>${maven.version}</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.maven</groupId>
+            <artifactId>maven-core</artifactId>
+            <version>${maven.version}</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.maven.plugin-tools</groupId>
+            <artifactId>maven-plugin-annotations</artifactId>
+            <version>${maven.plugin.tools.version}</version>
+            <scope>provided</scope>
+        </dependency>
+
+        <!-- Invocacao programatica do maven-deploy-plugin (reuso do deploy nativo) -->
+        <dependency>
+            <groupId>org.twdata.maven</groupId>
+            <artifactId>mojo-executor</artifactId>
+            <version>${mojo.executor.version}</version>
+        </dependency>
+
+        <!-- Build do projeto (clean install) em processo filho com saida capturada -->
+        <dependency>
+            <groupId>org.apache.maven.shared</groupId>
+            <artifactId>maven-invoker</artifactId>
+            <version>${maven.invoker.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-plugin-plugin</artifactId>
+                <version>${maven.plugin.tools.version}</version>
+                <configuration>
+                    <goalPrefix>${goalPrefix}</goalPrefix>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>default-descriptor</id>
+                        <goals>
+                            <goal>descriptor</goal>
+                        </goals>
+                        <phase>process-classes</phase>
+                    </execution>
+                    <execution>
+                        <id>help-goal</id>
+                        <goals>
+                            <goal>helpmojo</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>

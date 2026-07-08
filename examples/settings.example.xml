@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Modelo de configuracao GLOBAL do Vulcan Forge para Maven.
+  Copie o conteudo para o seu ~/.m2/settings.xml (ou use com: mvn -s este-arquivo.xml).
+
+  - TODA a configuracao e global e organizada por target (nexus / github).
+  - O unico ajuste por-projeto e escolher o target (vulcanforge.target ou -Dvulcanforge.target).
+  - Credenciais ficam em <servers> (o <id> casa com o serverId do target).
+  - <pluginGroups> permite usar o prefixo curto: mvn vulcan-forge:docker-publish
+-->
+<settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0 http://maven.apache.org/xsd/settings-1.0.0.xsd">
+
+    <pluginGroups>
+        <pluginGroup>io.github.dlduarte</pluginGroup>
+    </pluginGroups>
+
+    <servers>
+        <server>
+            <id>local-registry</id>
+            <username>admin</username>
+            <password>admin123</password>
+        </server>
+        <!-- Exemplo GitHub Packages:
+        <server>
+            <id>github-token</id>
+            <username>SEU_USUARIO_GITHUB</username>
+            <password>SEU_GITHUB_TOKEN</password>
+        </server>
+        -->
+    </servers>
+
+    <profiles>
+        <profile>
+            <id>vulcan-forge</id>
+            <properties>
+                <!-- target default; o projeto pode sobrescrever com -Dvulcanforge.target=github -->
+                <vulcanforge.target>nexus</vulcanforge.target>
+
+                <!-- Comuns (opcionais): imageName e tag herdam artifactId/version por padrao -->
+                <vulcanforge.dockerfilePath>Dockerfile</vulcanforge.dockerfilePath>
+
+                <!-- Target NEXUS -->
+                <vulcanforge.nexus.dockerRegistry>localhost:5000</vulcanforge.nexus.dockerRegistry>
+                <vulcanforge.nexus.mavenUrl>https://nexus.example.com/repository/maven-releases</vulcanforge.nexus.mavenUrl>
+                <vulcanforge.nexus.namespace>exemplos</vulcanforge.nexus.namespace>
+                <vulcanforge.nexus.serverId>local-registry</vulcanforge.nexus.serverId>
+
+                <!-- Target GITHUB_PACKAGES (dockerRegistry=ghcr.io e mavenUrl sao inferidos) -->
+                <vulcanforge.github.namespace>minha-org</vulcanforge.github.namespace>
+                <vulcanforge.github.serverId>github-token</vulcanforge.github.serverId>
+            </properties>
+        </profile>
+    </profiles>
+
+    <activeProfiles>
+        <activeProfile>vulcan-forge</activeProfile>
+    </activeProfiles>
+</settings>

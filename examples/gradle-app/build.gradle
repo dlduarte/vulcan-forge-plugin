@@ -1,0 +1,32 @@
+buildscript {
+    repositories {
+        mavenLocal()
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'io.github.dlduarte:vulcan-forge-gradle-plugin:1.0.0'
+    }
+}
+
+plugins {
+    id 'java'
+}
+
+apply plugin: 'io.github.dlduarte.publish'
+
+group = 'com.example'
+version = '1.0.0'
+
+// A configuracao global vem do gradle.properties (vulcanforge.*), que aponta para o
+// registry local (target=nexus) para este exemplo rodar de forma autocontida.
+// Para escolher outro servidor por-projeto, use a DSL, por exemplo:
+// vulcanForge {
+//     target = 'github'
+//     namespace = 'minha-org'
+// }
+
+jar {
+    manifest {
+        attributes 'Main-Class': 'com.example.App'
+    }
+}

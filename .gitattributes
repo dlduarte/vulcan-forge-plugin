@@ -1,0 +1,12 @@
+# Normaliza fim de linha (LF no repositório)
+* text=auto
+
+# Scripts Windows precisam de CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Wrapper do Gradle (shell) precisa de LF para rodar em Linux/macOS
+gradlew text eol=lf
+
+# Binários
+*.jar binary

@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.example</groupId>
+    <artifactId>maven-app</artifactId>
+    <version>1.0.0</version>
+    <packaging>jar</packaging>
+
+    <properties>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <maven.compiler.release>17</maven.compiler.release>
+    </properties>
+
+    <build>
+        <finalName>${project.artifactId}</finalName>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <version>3.4.1</version>
+                <configuration>
+                    <archive>
+                        <manifest>
+                            <mainClass>com.example.App</mainClass>
+                        </manifest>
+                    </archive>
+                </configuration>
+            </plugin>
+
+            <!-- Vulcan Forge. Toda a config vem do settings.xml (../settings.example.xml);
+                 o projeto so escolhe o servidor, aqui no <configuration><target>.
+                 Publicacao da imagem (ja faz clean+install e nao passa pelo deploy):
+                   mvn vulcan-forge:docker-publish -->
+            <plugin>
+                <groupId>io.github.dlduarte</groupId>
+                <artifactId>vulcan-forge-maven-plugin</artifactId>
+                <version>1.0.0</version>
+                <configuration>
+                    <!-- nexus | github (aliases: ghp, github-packages, ghcr) -->
+                    <target>nexus</target>
+                </configuration>
+                <!-- O <execution> declara o goal so para a IDE reconhecer os parametros do
+                     <configuration> (evita o aviso "Element target is not allowed here").
+                     Como docker-publish nao tem fase padrao, NAO roda num build normal. -->
+                <executions>
+                    <execution>
+                        <id>vulcan-forge-docker</id>
+                        <goals>
+                            <goal>docker-publish</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>

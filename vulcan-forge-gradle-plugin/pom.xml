@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>io.github.dlduarte</groupId>
+        <artifactId>vulcan-forge-parent</artifactId>
+        <version>1.0.0</version>
+    </parent>
+
+    <artifactId>vulcan-forge-gradle-plugin</artifactId>
+    <packaging>jar</packaging>
+    <name>Vulcan Forge Gradle Plugin</name>
+    <description>Plugin Gradle (id io.github.dlduarte.publish) para publicar imagem Docker e pacote Maven.</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>io.github.dlduarte</groupId>
+            <artifactId>vulcan-forge-core</artifactId>
+        </dependency>
+
+        <!-- API do Gradle disponivel no Maven Central; nao empacotada (provida pelo Gradle em runtime) -->
+        <dependency>
+            <groupId>dev.gradleplugins</groupId>
+            <artifactId>gradle-api</artifactId>
+            <version>${gradle.api.version}</version>
+            <scope>provided</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>
