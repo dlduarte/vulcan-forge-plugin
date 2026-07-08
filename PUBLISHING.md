@@ -34,14 +34,18 @@ gpg --armor --export-secret-keys KEY_ID > private-key.asc # para o CI (secret)
 
 ## 4a. Publicar via GitHub Actions (recomendado)
 
-Configure os **secrets** do repositório (Settings → Secrets and variables → Actions):
+Configure os **secrets** do repositório (Settings → Secrets and variables → Actions).
+São os **mesmos nomes** usados no `supple-tools`, então você pode reaproveitar os valores:
 
-| Secret                  | Valor                                    |
-|-------------------------|------------------------------------------|
-| `CENTRAL_USERNAME`      | username do token do Central             |
-| `CENTRAL_PASSWORD`      | password do token do Central             |
-| `MAVEN_GPG_PRIVATE_KEY` | conteúdo de `private-key.asc`            |
-| `MAVEN_GPG_PASSPHRASE`  | passphrase da chave GPG                  |
+| Secret            | Valor                                             |
+|-------------------|---------------------------------------------------|
+| `OSSRH_USERNAME`  | username do User Token do Central Portal          |
+| `OSSRH_TOKEN`     | password do User Token do Central Portal          |
+| `GPG_PRIVATE_KEY` | conteúdo de `private-key.asc` (chave GPG privada) |
+| `GPG_PASSPHRASE`  | passphrase da chave GPG                           |
+
+> O nome `OSSRH_*` é histórico; o valor é o **User Token do Central Portal**
+> (`central.sonatype.com` → *View Account* → *Generate User Token*).
 
 Depois, crie uma **Release** no GitHub (tag `vX.Y.Z`). O workflow
 [`.github/workflows/release.yml`](.github/workflows/release.yml) roda

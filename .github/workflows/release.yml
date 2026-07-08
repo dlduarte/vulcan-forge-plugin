@@ -1,21 +1,22 @@
 name: Release (Maven Central)
 
 # Publica no Maven Central quando uma Release do GitHub e criada.
-# Secrets necessarios no repositorio (Settings -> Secrets and variables -> Actions):
-#   CENTRAL_USERNAME        - token username do Central Portal
-#   CENTRAL_PASSWORD        - token password do Central Portal
-#   MAVEN_GPG_PRIVATE_KEY   - chave GPG privada (ASCII armored) para assinar
-#   MAVEN_GPG_PASSPHRASE    - passphrase da chave GPG
+# Usa os mesmos secrets do supple-tools:
+#   OSSRH_USERNAME / OSSRH_TOKEN  - User Token do Central Portal (central.sonatype.com)
+#   GPG_PRIVATE_KEY / GPG_PASSPHRASE - chave GPG para assinar os artefatos
 on:
   release:
-    types: [ published ]
+    types: [ created ]
   workflow_dispatch:
 
 jobs:
   publish:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Set up JDK 17 + Central credentials + GPG
         uses: actions/setup-java@v4
@@ -24,14 +25,14 @@ jobs:
           java-version: '17'
           cache: maven
           server-id: central
-          server-username: CENTRAL_USERNAME
-          server-password: CENTRAL_PASSWORD
-          gpg-private-key: ${{ secrets.MAVEN_GPG_PRIVATE_KEY }}
-          gpg-passphrase: MAVEN_GPG_PASSPHRASE
+          server-username: MAVEN_USERNAME
+          server-password: MAVEN_PASSWORD
+          gpg-private-key: ${{ secrets.GPG_PRIVATE_KEY }}
+          gpg-passphrase: GPG_PASSPHRASE
 
-      - name: Publish to Maven Central
+      - name: Build and publish
         run: mvn -B --no-transfer-progress -Prelease clean deploy
         env:
-          CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
-          CENTRAL_PASSWORD: ${{ secrets.CENTRAL_PASSWORD }}
-          MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
+          MAVEN_USERNAME: ${{ secrets.OSSRH_USERNAME }}
+          MAVEN_PASSWORD: ${{ secrets.OSSRH_TOKEN }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
