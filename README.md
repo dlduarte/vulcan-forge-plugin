@@ -49,7 +49,7 @@ Requisitos: **Java 17+**, **Docker** instalado e no `PATH` (para publicar imagen
 ## Instalação
 
 Os artefatos são publicados no **Maven Central**, então basta referenciá-los — não é
-preciso compilar o plugin. Coordenadas (versão `1.0.0`):
+preciso compilar o plugin. Coordenadas (versão `1.0.1`):
 
 - `io.github.dlduarte:vulcan-forge-maven-plugin` (plugin Maven)
 - `io.github.dlduarte:vulcan-forge-gradle-plugin` (plugin Gradle, id `io.github.dlduarte.publish`)
@@ -140,7 +140,7 @@ padrão, **não roda num build normal**:
 <plugin>
   <groupId>io.github.dlduarte</groupId>
   <artifactId>vulcan-forge-maven-plugin</artifactId>
-  <version>1.0.0</version>
+  <version>1.0.1</version>
   <configuration>
     <target>github</target>
   </configuration>
@@ -173,7 +173,7 @@ mvn vulcan-forge:docker-publish   # ja faz clean + install + docker (um so coman
 >     <plugin>
 >       <groupId>io.github.dlduarte</groupId>
 >       <artifactId>vulcan-forge-maven-plugin</artifactId>
->       <version>1.0.0</version>
+>       <version>1.0.1</version>
 >     </plugin>
 >   </plugins></build>
 > </project>
@@ -208,7 +208,9 @@ vulcanForge {
 
 ## Publicar pacote Maven
 
-Comando **separado** do Docker; reusa o deploy nativo.
+Comando **separado** do Docker; reusa o deploy nativo. O goal `maven-publish` **empacota o
+projeto sozinho** (bifurca o ciclo de vida até `package`), então não é preciso rodar `package`
+antes — e, como não tem fase padrão, ele nunca roda num build normal.
 
 ```bash
 # Maven
