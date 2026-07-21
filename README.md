@@ -189,7 +189,7 @@ o Docker não estiver disponível. Após o push, a imagem local é removida
 ```groovy
 buildscript {
     repositories { mavenCentral() }   // use mavenLocal() se estiver testando um build local
-    dependencies { classpath 'io.github.dlduarte:vulcan-forge-gradle-plugin:1.0.0' }
+    dependencies { classpath 'io.github.dlduarte:vulcan-forge-gradle-plugin:1.0.2' }
 }
 plugins { id 'java' }
 apply plugin: 'io.github.dlduarte.publish'
