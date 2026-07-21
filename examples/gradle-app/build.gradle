@@ -4,7 +4,7 @@ buildscript {
         mavenCentral()
     }
     dependencies {
-        classpath 'io.github.dlduarte:vulcan-forge-gradle-plugin:1.0.1'
+        classpath 'io.github.dlduarte:vulcan-forge-gradle-plugin:1.0.2'
     }
 }
 

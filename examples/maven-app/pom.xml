@@ -37,7 +37,7 @@
             <plugin>
                 <groupId>io.github.dlduarte</groupId>
                 <artifactId>vulcan-forge-maven-plugin</artifactId>
-                <version>1.0.1</version>
+                <version>1.0.2</version>
                 <configuration>
                     <!-- nexus | github (aliases: ghp, github-packages, ghcr) -->
                     <target>nexus</target>

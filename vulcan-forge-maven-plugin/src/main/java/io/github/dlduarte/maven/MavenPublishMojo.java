@@ -3,53 +3,46 @@ package io.github.dlduarte.maven;
 import io.github.dlduarte.ForgeException;
 import io.github.dlduarte.config.VulcanForgeConfig;
 import io.github.dlduarte.publish.MavenPackagePublisher;
-import org.apache.maven.artifact.Artifact;
+import org.apache.maven.execution.MavenExecutionRequest;
 import org.apache.maven.execution.MavenSession;
-import org.apache.maven.plugin.BuildPluginManager;
 import org.apache.maven.plugin.MojoExecutionException;
-import org.apache.maven.plugins.annotations.Component;
-import org.apache.maven.plugins.annotations.Execute;
-import org.apache.maven.plugins.annotations.LifecyclePhase;
 import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
-import org.apache.maven.project.MavenProject;
+import org.apache.maven.shared.invoker.DefaultInvocationRequest;
+import org.apache.maven.shared.invoker.DefaultInvoker;
+import org.apache.maven.shared.invoker.InvocationOutputHandler;
+import org.apache.maven.shared.invoker.InvocationRequest;
+import org.apache.maven.shared.invoker.InvocationResult;
+import org.apache.maven.shared.invoker.Invoker;
+import org.apache.maven.shared.invoker.MavenInvocationException;
 
-import static org.twdata.maven.mojoexecutor.MojoExecutor.artifactId;
-import static org.twdata.maven.mojoexecutor.MojoExecutor.configuration;
-import static org.twdata.maven.mojoexecutor.MojoExecutor.element;
-import static org.twdata.maven.mojoexecutor.MojoExecutor.executeMojo;
-import static org.twdata.maven.mojoexecutor.MojoExecutor.executionEnvironment;
-import static org.twdata.maven.mojoexecutor.MojoExecutor.goal;
-import static org.twdata.maven.mojoexecutor.MojoExecutor.groupId;
-import static org.twdata.maven.mojoexecutor.MojoExecutor.name;
-import static org.twdata.maven.mojoexecutor.MojoExecutor.plugin;
-import static org.twdata.maven.mojoexecutor.MojoExecutor.version;
+import java.io.File;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Properties;
 
 /**
  * Publica o pacote Maven do projeto (jar/pom) no repositorio configurado, reusando
- * o {@code maven-deploy-plugin} nativo. Resolve a URL de destino a partir da config
- * do Vulcan Forge e injeta como {@code altDeploymentRepository}, cujo id ({@code serverId})
+ * o {@code deploy} nativo do Maven. Resolve a URL de destino a partir da config do
+ * Vulcan Forge e injeta como {@code altDeploymentRepository}, cujo id ({@code serverId})
  * deve casar com um {@code <server>} do settings.xml (para as credenciais).
  *
- * <p>Como e um goal <b>standalone</b> ({@code mvn vulcan-forge:maven-publish}), ele bifurca
- * o ciclo de vida ate {@code package} ({@link Execute}): sem isso o projeto nao teria artefato
- * empacotado e o deploy falharia com "The packaging for this project did not assign a file to
- * the build artifact". O ciclo bifurcado roda sobre um <i>clone</i> do projeto, entao os
- * artefatos gerados precisam ser copiados de volta antes de delegar ao deploy.
+ * <p>Como e um goal <b>standalone</b> ({@code mvn vulcan-forge:maven-publish}), ele empacota
+ * o projeto sozinho: roda {@code clean deploy} num <b>processo Maven filho</b> (mesmo padrao
+ * do {@code docker-publish}), garantindo um {@code target/} limpo antes de publicar. O deploy
+ * roda no ciclo do proprio filho, entao todos os artefatos (jar principal + anexos como
+ * sources/javadoc) sao publicados nativamente, sem "adocao" de artefatos entre reatores.
+ * A saida do build filho fica omitida no sucesso e e despejada em caso de erro.
  */
 @Mojo(name = "maven-publish", requiresProject = true, threadSafe = true)
-@Execute(phase = LifecyclePhase.PACKAGE)
 public class MavenPublishMojo extends AbstractVulcanForgeMojo {
-
-    /** Versao do maven-deploy-plugin usada na delegacao. */
-    @Parameter(property = "vulcanforge.deployPluginVersion", defaultValue = "3.1.1")
-    private String deployPluginVersion;
 
     @Parameter(defaultValue = "${session}", readonly = true, required = true)
     private MavenSession session;
 
-    @Component
-    private BuildPluginManager pluginManager;
+    /** Pula os testes no build de publicacao ({@code -DskipTests}). */
+    @Parameter(property = "vulcanforge.skipTests", defaultValue = "false")
+    private boolean skipTests;
 
     @Override
     public void execute() throws MojoExecutionException {
@@ -73,50 +66,99 @@ public class MavenPublishMojo extends AbstractVulcanForgeMojo {
                     + "(deve casar com um <server> do settings.xml).");
         }
 
-        adoptForkedArtifacts();
-
         // Formato do maven-deploy-plugin 3.x: id::url
         String altRepo = repoId + "::" + repoUrl;
         getLog().info("vulcan-forge: publicando pacote Maven em " + altRepo);
 
-        executeMojo(
-                plugin(
-                        groupId("org.apache.maven.plugins"),
-                        artifactId("maven-deploy-plugin"),
-                        version(deployPluginVersion)),
-                goal("deploy"),
-                configuration(
-                        element(name("altDeploymentRepository"), altRepo)),
-                executionEnvironment(project, session, pluginManager));
+        runDeploy(altRepo);
+
+        getLog().info("vulcan-forge: pacote Maven publicado.");
     }
 
     /**
-     * Traz para o projeto os artefatos produzidos pelo ciclo bifurcado (que roda sobre um clone),
-     * para que o {@code maven-deploy-plugin} encontre o jar principal e os anexos (sources,
-     * javadoc, ...). Quando o goal roda dentro de um ciclo normal (ja empacotado), nao ha nada
-     * a copiar e o metodo e inocuo.
+     * Roda {@code clean deploy} num Maven filho, com o {@code altDeploymentRepository} apontando
+     * para o destino resolvido. Captura toda a saida e so a mostra em caso de falha.
      */
-    private void adoptForkedArtifacts() throws MojoExecutionException {
-        MavenProject forked = project.getExecutionProject();
-        if (forked != null && forked != project) {
-            Artifact main = project.getArtifact();
-            Artifact forkedMain = forked.getArtifact();
-            if (main != null && main.getFile() == null && forkedMain != null && forkedMain.getFile() != null) {
-                main.setFile(forkedMain.getFile());
-            }
-            for (Artifact attached : forked.getAttachedArtifacts()) {
-                if (!project.getAttachedArtifacts().contains(attached)) {
-                    project.addAttachedArtifact(attached);
-                }
-            }
+    private void runDeploy(String altRepo) throws MojoExecutionException {
+        List<String> goals = new ArrayList<>();
+        goals.add("clean");
+        goals.add("deploy");
+        getLog().info("vulcan-forge: publicando o artefato (" + String.join(" ", goals) + ")...");
+
+        InvocationRequest request = new DefaultInvocationRequest();
+        request.setPomFile(project.getFile());
+        request.setBaseDirectory(project.getBasedir());
+        request.setGoals(goals);
+        request.setBatchMode(true);
+
+        Properties props = new Properties();
+        props.setProperty("altDeploymentRepository", altRepo);
+        if (skipTests) {
+            props.setProperty("skipTests", "true");
+        }
+        request.setProperties(props);
+
+        // Propaga o contexto da execucao atual para o build filho.
+        MavenExecutionRequest parent = session.getRequest();
+        if (parent.getUserSettingsFile() != null) {
+            request.setUserSettingsFile(parent.getUserSettingsFile());
+        }
+        if (parent.getGlobalSettingsFile() != null) {
+            request.setGlobalSettingsFile(parent.getGlobalSettingsFile());
+        }
+        if (session.getLocalRepository() != null && session.getLocalRepository().getBasedir() != null) {
+            request.setLocalRepositoryDirectory(new File(session.getLocalRepository().getBasedir()));
+        }
+        if (parent.getActiveProfiles() != null && !parent.getActiveProfiles().isEmpty()) {
+            request.setProfiles(new ArrayList<>(parent.getActiveProfiles()));
+        }
+        request.setOffline(parent.isOffline());
+
+        // Captura stdout+stderr; so mostramos em caso de erro.
+        StringBuilder captured = new StringBuilder();
+        InvocationOutputHandler handler = line -> captured.append(line).append(System.lineSeparator());
+        request.setOutputHandler(handler);
+        request.setErrorHandler(handler);
+
+        Invoker invoker = new DefaultInvoker();
+        File mavenHome = resolveMavenHome();
+        if (mavenHome != null) {
+            invoker.setMavenHome(mavenHome);
         }
 
-        boolean pomPackaging = "pom".equals(project.getPackaging());
-        Artifact main = project.getArtifact();
-        if (!pomPackaging && (main == null || main.getFile() == null)) {
-            throw new MojoExecutionException("O projeto nao possui artefato empacotado para publicar. "
-                    + "Rode 'mvn clean package io.github.dlduarte:vulcan-forge-maven-plugin:maven-publish' "
-                    + "ou verifique se a fase 'package' produziu o artefato.");
+        InvocationResult result;
+        try {
+            result = invoker.execute(request);
+        } catch (MavenInvocationException e) {
+            dumpBuildLog(captured);
+            throw new MojoExecutionException("Nao foi possivel executar o build de publicacao. "
+                    + "Verifique se o Maven esta acessivel (maven.home/M2_HOME).", e);
         }
+
+        if (result.getExitCode() != 0) {
+            dumpBuildLog(captured);
+            throw new MojoExecutionException("A publicacao do pacote Maven ('" + String.join(" ", goals)
+                    + "') falhou com exit code " + result.getExitCode() + ".",
+                    result.getExecutionException());
+        }
+    }
+
+    private void dumpBuildLog(StringBuilder captured) {
+        if (captured.length() > 0) {
+            getLog().error("--- saida do build de publicacao ---");
+            getLog().error(System.lineSeparator() + captured);
+            getLog().error("--- fim da saida do build de publicacao ---");
+        }
+    }
+
+    private File resolveMavenHome() {
+        String home = System.getProperty("maven.home");
+        if (home == null || home.isBlank()) {
+            home = System.getenv("MAVEN_HOME");
+        }
+        if (home == null || home.isBlank()) {
+            home = System.getenv("M2_HOME");
+        }
+        return (home == null || home.isBlank()) ? null : new File(home);
     }
 }
