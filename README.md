@@ -49,7 +49,7 @@ Requisitos: **Java 17+**, **Docker** instalado e no `PATH` (para publicar imagen
 ## Instalação
 
 Os artefatos são publicados no **Maven Central**, então basta referenciá-los — não é
-preciso compilar o plugin. Coordenadas (versão `1.0.1`):
+preciso compilar o plugin. Coordenadas (versão `1.0.2`):
 
 - `io.github.dlduarte:vulcan-forge-maven-plugin` (plugin Maven)
 - `io.github.dlduarte:vulcan-forge-gradle-plugin` (plugin Gradle, id `io.github.dlduarte.publish`)
@@ -140,7 +140,7 @@ padrão, **não roda num build normal**:
 <plugin>
   <groupId>io.github.dlduarte</groupId>
   <artifactId>vulcan-forge-maven-plugin</artifactId>
-  <version>1.0.1</version>
+  <version>1.0.2</version>
   <configuration>
     <target>github</target>
   </configuration>
@@ -173,7 +173,7 @@ mvn vulcan-forge:docker-publish   # ja faz clean + install + docker (um so coman
 >     <plugin>
 >       <groupId>io.github.dlduarte</groupId>
 >       <artifactId>vulcan-forge-maven-plugin</artifactId>
->       <version>1.0.1</version>
+>       <version>1.0.2</version>
 >     </plugin>
 >   </plugins></build>
 > </project>
@@ -209,13 +209,21 @@ vulcanForge {
 ## Publicar pacote Maven
 
 Comando **separado** do Docker; reusa o deploy nativo. O goal `maven-publish` **empacota o
-projeto sozinho** (bifurca o ciclo de vida até `package`), então não é preciso rodar `package`
-antes — e, como não tem fase padrão, ele nunca roda num build normal.
+projeto sozinho**: roda `clean deploy` num processo Maven filho (mesmo padrão do
+`docker-publish`), garantindo um `target/` limpo antes de publicar. Não é preciso rodar
+`clean`/`package` antes, e — como não tem fase padrão — ele nunca roda num build normal.
+A saída do build filho fica omitida no sucesso e é impressa em caso de erro.
+
+> **A URL do repositório (`mavenUrl`) precisa ser `https` se o Nexus redirecionar (301).**
+> O Maven segue redirect em GET (downloads), mas **não** em PUT (deploy), então um
+> `http` que redireciona para `https` falha no upload com `301 Moved Permanently`.
+
+Parâmetro útil (Maven): `-Dvulcanforge.skipTests=true` pula os testes na publicação.
 
 ```bash
 # Maven
 mvn clean deploy                 # com distributionManagement próprio, ou:
-mvn vulcan-forge:maven-publish   # usa a mavenUrl/serverId do target configurado
+mvn vulcan-forge:maven-publish   # usa a mavenUrl/serverId do target configurado (já faz clean)
 
 # Gradle
 ./gradlew vulcanMavenPublish     # configura o repositório do maven-publish e delega a 'publish'
