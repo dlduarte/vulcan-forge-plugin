@@ -1,6 +1,7 @@
 package io.github.dlduarte.maven;
 
 import io.github.dlduarte.ForgeException;
+import io.github.dlduarte.config.ForgeGoal;
 import io.github.dlduarte.config.VulcanForgeConfig;
 import io.github.dlduarte.publish.MavenPackagePublisher;
 import org.apache.maven.execution.MavenExecutionRequest;
@@ -50,6 +51,9 @@ public class MavenPublishMojo extends AbstractVulcanForgeMojo {
             getLog().info("vulcan-forge: maven-publish pulado (vulcanforge.skip=true).");
             return;
         }
+
+        // Antes de qualquer coisa: este projeto pode publicar pacote Maven?
+        requireGoalEnabled(ForgeGoal.MAVEN);
 
         VulcanForgeConfig cfg = resolveConfig();
 

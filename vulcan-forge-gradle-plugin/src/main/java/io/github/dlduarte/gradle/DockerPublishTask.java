@@ -1,7 +1,10 @@
 package io.github.dlduarte.gradle;
 
 import io.github.dlduarte.ForgeLogger;
+import io.github.dlduarte.config.BuildTool;
 import io.github.dlduarte.config.Credentials;
+import io.github.dlduarte.config.EnabledGoals;
+import io.github.dlduarte.config.ForgeGoal;
 import io.github.dlduarte.config.VulcanForgeConfig;
 import io.github.dlduarte.docker.DockerImagePublisher;
 import io.github.dlduarte.process.ProcessRunner;
@@ -20,6 +23,9 @@ public class DockerPublishTask extends DefaultTask {
     public void run() {
         Project project = getProject();
         VulcanForgeExtension ext = project.getExtensions().getByType(VulcanForgeExtension.class);
+
+        // Antes de qualquer coisa: este projeto pode publicar imagem Docker?
+        EnabledGoals.parse(ext.getEnabledGoals(), BuildTool.GRADLE).require(ForgeGoal.DOCKER);
 
         VulcanForgeConfig cfg = GradleConfigReader.resolve(project, ext);
         ForgeLogger log = new GradleForgeLogger(getLogger());

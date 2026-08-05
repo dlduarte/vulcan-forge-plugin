@@ -1,7 +1,10 @@
 package io.github.dlduarte.gradle;
 
 import io.github.dlduarte.ForgeLogger;
+import io.github.dlduarte.config.BuildTool;
 import io.github.dlduarte.config.Credentials;
+import io.github.dlduarte.config.EnabledGoals;
+import io.github.dlduarte.config.ForgeGoal;
 import io.github.dlduarte.config.VulcanForgeConfig;
 import io.github.dlduarte.publish.MavenPackagePublisher;
 import org.gradle.api.Plugin;
@@ -14,8 +17,12 @@ import java.net.URI;
  * Plugin Gradle {@code io.github.dlduarte.publish}. Registra a extensao {@code vulcanForge}
  * e as tasks {@code dockerPublish} e {@code vulcanMavenPublish}.
  *
- * <p>Se o plugin {@code maven-publish} estiver aplicado, configura automaticamente um
- * repositorio Maven de destino (URL + credenciais) a partir da config do Vulcan Forge.
+ * <p>O projeto declara em {@code vulcanForge.enabledGoals} quais dessas tasks ele pode
+ * rodar; as demais somem do grupo e se recusam a executar.
+ *
+ * <p>Se o plugin {@code maven-publish} estiver aplicado (e {@code vulcanMavenPublish}
+ * habilitado), configura automaticamente um repositorio Maven de destino (URL +
+ * credenciais) a partir da config do Vulcan Forge.
  */
 public class VulcanForgePlugin implements Plugin<Project> {
 
@@ -40,11 +47,23 @@ public class VulcanForgePlugin implements Plugin<Project> {
     }
 
     private void wire(Project project) {
+        VulcanForgeExtension ext = project.getExtensions().getByType(VulcanForgeExtension.class);
+        EnabledGoals enabled = EnabledGoals.parse(ext.getEnabledGoals(), BuildTool.GRADLE);
+
+        // Uma task nao habilitada sai do grupo (some do './gradlew tasks' e do painel da IDE)
+        // e nao ganha nenhuma dependencia — se ainda assim for invocada pelo nome, ela falha
+        // sem ter rodado build/publish. Enquanto nada for declarado, as duas continuam
+        // visiveis: qualquer uma delas falha explicando como declarar.
+        if (enabled.isDeclared()) {
+            hideIfDisabled(project, "dockerPublish", ForgeGoal.DOCKER, enabled);
+            hideIfDisabled(project, "vulcanMavenPublish", ForgeGoal.MAVEN, enabled);
+        }
+
         // dockerPublish faz clean + build antes (equivalente ao 'clean install' do Maven),
         // garantindo um unico jar em build/libs para o 'COPY build/libs/*.jar' do Dockerfile.
         boolean hasBuild = project.getTasks().findByName("build") != null;
         boolean hasClean = project.getTasks().findByName("clean") != null;
-        if (hasBuild) {
+        if (enabled.isEnabled(ForgeGoal.DOCKER) && hasBuild) {
             project.getTasks().named("dockerPublish").configure(t -> {
                 t.dependsOn("build");
                 if (hasClean) {
@@ -57,12 +76,20 @@ public class VulcanForgePlugin implements Plugin<Project> {
             }
         }
 
-        // Integracao com maven-publish, se aplicado.
-        if (project.getPluginManager().findPlugin("maven-publish") != null) {
+        // Integracao com maven-publish, se aplicado (e se o projeto publicar pacote Maven —
+        // caso contrario nem o repositorio de destino e registrado).
+        if (enabled.isEnabled(ForgeGoal.MAVEN)
+                && project.getPluginManager().findPlugin("maven-publish") != null) {
             configureMavenPublishRepository(project);
             if (project.getTasks().findByName("publish") != null) {
                 project.getTasks().named("vulcanMavenPublish").configure(t -> t.dependsOn("publish"));
             }
+        }
+    }
+
+    private void hideIfDisabled(Project project, String taskName, ForgeGoal goal, EnabledGoals enabled) {
+        if (!enabled.isEnabled(goal)) {
+            project.getTasks().named(taskName).configure(t -> t.setGroup(null));
         }
     }
 
