@@ -37,8 +37,15 @@
             <plugin>
                 <groupId>io.github.dlduarte</groupId>
                 <artifactId>vulcan-forge-maven-plugin</artifactId>
-                <version>1.0.2</version>
+                <version>1.1.0</version>
                 <configuration>
+                    <!-- OBRIGATORIO: o que este projeto pode publicar. Um goal fora desta
+                         lista se recusa a rodar — e assim que um projeto que so distribui
+                         o jar evita gerar uma imagem Docker por engano. -->
+                    <enabledGoals>
+                        <goal>docker-publish</goal>
+                        <!-- <goal>maven-publish</goal> -->
+                    </enabledGoals>
                     <!-- nexus | github (aliases: ghp, github-packages, ghcr) -->
                     <target>nexus</target>
                 </configuration>

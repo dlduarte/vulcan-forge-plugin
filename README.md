@@ -7,6 +7,47 @@ formas **independentes** (comandos separados):
 1. **Imagem Docker** — a partir de um `Dockerfile` na raiz do projeto integrador.
 2. **Pacote Maven** — para distribuição via dependência (reusa o deploy nativo).
 
+## Goals habilitados por projeto (obrigatório)
+
+Cada projeto **declara quais goals do plugin ele pode rodar**. Um goal fora dessa lista se
+recusa a executar — é o que impede que alguém clique no goal errado na IDE e um projeto que
+só distribui o jar acabe gerando e publicando uma imagem Docker.
+
+| Publicação    | Goal (Maven)     | Task (Gradle)        |
+|---------------|------------------|----------------------|
+| Imagem Docker | `docker-publish` | `dockerPublish`      |
+| Pacote Maven  | `maven-publish`  | `vulcanMavenPublish` |
+
+```xml
+<!-- pom.xml, no <configuration> do vulcan-forge-maven-plugin -->
+<enabledGoals>
+  <goal>maven-publish</goal>
+</enabledGoals>
+```
+
+```groovy
+// build.gradle
+vulcanForge {
+    enabledGoals = ['vulcanMavenPublish']
+}
+```
+
+Os nomes são intercambiáveis (`docker-publish`, `dockerPublish` ou `docker`; `maven-publish`,
+`vulcanMavenPublish` ou `maven`), sem diferenciar maiúsculas/hífens — a mesma lista serve
+para os dois mundos.
+
+Sem a declaração, **nenhum** goal roda — inclusive em projetos que já usavam o plugin, que
+precisam acrescentá-la. A falha explica o que declarar e o que cada goal faz.
+Se o goal existe mas não está habilitado, a mensagem mostra o que o projeto declarou e como
+liberá-lo, caso seja intencional. Nos dois casos a checagem é a **primeira** coisa que roda:
+nada é buildado, empacotado ou enviado antes dela.
+
+No **Gradle** a proteção também é visual: as tasks não declaradas saem do grupo `vulcan forge`
+e somem do `./gradlew tasks` e do painel do Gradle na IDE. Elas também não ganham as
+dependências (`build`, `publish`), então nem isso roda se alguém as invocar pelo nome.
+No **Maven**, a IDE lista os goals a partir do descritor do plugin, então eles continuam
+visíveis — a proteção é a falha imediata.
+
 ## Modelo de configuração
 
 As **coordenadas do servidor** são globais e organizadas por **target** (`nexus` / `github`):
@@ -28,7 +69,8 @@ vulcanforge.<target>.serverId                 # id das credenciais
 
 O projeto pode sobrescrever (pom `<configuration>` / DSL `vulcanForge { }`): `target`,
 `namespace`, `imageName`, `tag`, `dockerfilePath`, `removeLocalImage`. As coordenadas do
-servidor (`dockerRegistry`, `mavenUrl`, `serverId`) são sempre globais.
+servidor (`dockerRegistry`, `mavenUrl`, `serverId`) são sempre globais. O `enabledGoals` é
+por-projeto por definição — não faz sentido (nem tem efeito) declará-lo globalmente.
 
 Para `github`, `dockerRegistry` assume `ghcr.io` e `mavenUrl` assume
 `https://maven.pkg.github.com/<namespace>` automaticamente.
@@ -49,7 +91,7 @@ Requisitos: **Java 17+**, **Docker** instalado e no `PATH` (para publicar imagen
 ## Instalação
 
 Os artefatos são publicados no **Maven Central**, então basta referenciá-los — não é
-preciso compilar o plugin. Coordenadas (versão `1.0.2`):
+preciso compilar o plugin. Coordenadas (versão `1.1.0`):
 
 - `io.github.dlduarte:vulcan-forge-maven-plugin` (plugin Maven)
 - `io.github.dlduarte:vulcan-forge-gradle-plugin` (plugin Gradle, id `io.github.dlduarte.publish`)
@@ -140,8 +182,11 @@ padrão, **não roda num build normal**:
 <plugin>
   <groupId>io.github.dlduarte</groupId>
   <artifactId>vulcan-forge-maven-plugin</artifactId>
-  <version>1.0.2</version>
+  <version>1.1.0</version>
   <configuration>
+    <enabledGoals>
+      <goal>docker-publish</goal>
+    </enabledGoals>
     <target>github</target>
   </configuration>
   <executions>
@@ -166,6 +211,7 @@ mvn vulcan-forge:docker-publish   # ja faz clean + install + docker (um so coman
 > <project>
 >   ...
 >   <properties>
+>     <vulcanforge.enabledGoals>docker-publish</vulcanforge.enabledGoals>
 >     <vulcanforge.target>github</vulcanforge.target>
 >     <vulcanforge.namespace>minha-org</vulcanforge.namespace>
 >   </properties>
@@ -173,7 +219,7 @@ mvn vulcan-forge:docker-publish   # ja faz clean + install + docker (um so coman
 >     <plugin>
 >       <groupId>io.github.dlduarte</groupId>
 >       <artifactId>vulcan-forge-maven-plugin</artifactId>
->       <version>1.0.2</version>
+>       <version>1.1.0</version>
 >     </plugin>
 >   </plugins></build>
 > </project>
@@ -189,13 +235,15 @@ o Docker não estiver disponível. Após o push, a imagem local é removida
 ```groovy
 buildscript {
     repositories { mavenCentral() }   // use mavenLocal() se estiver testando um build local
-    dependencies { classpath 'io.github.dlduarte:vulcan-forge-gradle-plugin:1.0.2' }
+    dependencies { classpath 'io.github.dlduarte:vulcan-forge-gradle-plugin:1.1.0' }
 }
 plugins { id 'java' }
 apply plugin: 'io.github.dlduarte.publish'
 
-// opcional: sobrescreve a config global só neste projeto
 vulcanForge {
+    enabledGoals = ['dockerPublish']   // obrigatório: o que este projeto pode publicar
+
+    // opcional: sobrescreve a config global só neste projeto
     target = 'github'          // nexus | github
     namespace = 'minha-org'    // pode variar por projeto
     // removeLocalImage = false // (default: true)
@@ -217,6 +265,8 @@ A saída do build filho fica omitida no sucesso e é impressa em caso de erro.
 > **A URL do repositório (`mavenUrl`) precisa ser `https` se o Nexus redirecionar (301).**
 > O Maven segue redirect em GET (downloads), mas **não** em PUT (deploy), então um
 > `http` que redireciona para `https` falha no upload com `301 Moved Permanently`.
+
+Exige `maven-publish` / `vulcanMavenPublish` em [`enabledGoals`](#goals-habilitados-por-projeto-obrigatório).
 
 Parâmetro útil (Maven): `-Dvulcanforge.skipTests=true` pula os testes na publicação.
 

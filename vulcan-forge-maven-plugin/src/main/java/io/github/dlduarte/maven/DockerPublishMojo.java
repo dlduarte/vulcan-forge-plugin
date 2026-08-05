@@ -3,6 +3,7 @@ package io.github.dlduarte.maven;
 import io.github.dlduarte.ForgeException;
 import io.github.dlduarte.ForgeLogger;
 import io.github.dlduarte.config.Credentials;
+import io.github.dlduarte.config.ForgeGoal;
 import io.github.dlduarte.config.VulcanForgeConfig;
 import io.github.dlduarte.docker.DockerImagePublisher;
 import io.github.dlduarte.process.ProcessRunner;
@@ -59,6 +60,9 @@ public class DockerPublishMojo extends AbstractVulcanForgeMojo {
             getLog().info("vulcan-forge: docker-publish pulado (vulcanforge.skip=true).");
             return;
         }
+
+        // Antes de qualquer coisa: este projeto pode publicar imagem Docker?
+        requireGoalEnabled(ForgeGoal.DOCKER);
 
         VulcanForgeConfig cfg = resolveConfig();
         getLog().info("vulcan-forge: " + cfg);
