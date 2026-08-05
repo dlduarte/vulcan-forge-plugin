@@ -7,7 +7,7 @@
     <parent>
         <groupId>io.github.dlduarte</groupId>
         <artifactId>vulcan-forge-parent</artifactId>
-        <version>1.1.0</version>
+        <version>1.2.0</version>
     </parent>
 
     <artifactId>vulcan-forge-maven-plugin</artifactId>
@@ -46,14 +46,7 @@
             <scope>provided</scope>
         </dependency>
 
-        <!-- Invocacao programatica do maven-deploy-plugin (reuso do deploy nativo) -->
-        <dependency>
-            <groupId>org.twdata.maven</groupId>
-            <artifactId>mojo-executor</artifactId>
-            <version>${mojo.executor.version}</version>
-        </dependency>
-
-        <!-- Build do projeto (clean install) em processo filho com saida capturada -->
+        <!-- Build do projeto (clean install / clean deploy) em processo filho com saida capturada -->
         <dependency>
             <groupId>org.apache.maven.shared</groupId>
             <artifactId>maven-invoker</artifactId>

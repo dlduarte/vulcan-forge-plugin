@@ -1,0 +1,18 @@
+// Ponto de extensao por servico: a DSL do subproject sobrescreve o que veio do root.
+// Aqui a imagem sai como 'app-b' em vez de 'service-b'.
+// Para tirar o subproject das publicacoes: vulcanForge { skip = true }
+// Para restringir o que ele pode publicar: vulcanForge { enabledGoals = ['dockerPublish'] }
+vulcanForge {
+    imageName = 'app-b'
+}
+
+dependencies {
+    implementation project(':commons')
+}
+
+jar {
+    archiveFileName = 'service-b.jar'
+    manifest {
+        attributes 'Main-Class': 'com.example.serviceb.App'
+    }
+}

@@ -1,0 +1,35 @@
+buildscript {
+    repositories {
+        mavenLocal()
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'io.github.dlduarte:vulcan-forge-gradle-plugin:1.2.0'
+    }
+}
+
+// O plugin e aplicado UMA UNICA VEZ, aqui no root — o equivalente ao parent pom do Maven.
+// Ele se propaga para todos os subprojects, e as tasks do root viram agregadoras:
+//
+//   ./gradlew dockerPublish              -> imagem de service-a e service-b
+//   ./gradlew :service-a:dockerPublish   -> so a imagem do service-a
+//   ./gradlew vulcanMavenPublish         -> publica os pacotes Maven dos subprojects
+//
+// 'commons' fica de fora da publicacao Docker sem configuracao nenhuma: nao tem Dockerfile.
+apply plugin: 'io.github.dlduarte.publish'
+
+allprojects {
+    group = 'com.example'
+    version = '1.0.0'
+}
+
+subprojects {
+    apply plugin: 'java'
+
+    // O que cada subproject pode publicar. Declarado aqui vale para todos; um subproject
+    // restringe sobrescrevendo o seu proprio vulcanForge { enabledGoals = [...] }
+    // (ver commons). O root nao declara nada: as tasks dele so agregam as dos subprojects.
+    vulcanForge {
+        enabledGoals = ['dockerPublish', 'vulcanMavenPublish']
+    }
+}

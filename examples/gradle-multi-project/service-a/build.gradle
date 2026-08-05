@@ -1,0 +1,13 @@
+// Servico. Nao aplica o plugin: ele veio do root. Entra na publicacao Docker so por ter um
+// Dockerfile, e a imagem sai como <namespace>/service-a:1.0.0 (imageName = nome do projeto).
+
+dependencies {
+    implementation project(':commons')
+}
+
+jar {
+    archiveFileName = 'service-a.jar'
+    manifest {
+        attributes 'Main-Class': 'com.example.servicea.App'
+    }
+}

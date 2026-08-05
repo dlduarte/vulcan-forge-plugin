@@ -141,10 +141,26 @@ public class DockerImagePublisher {
         return url;
     }
 
-    private File resolveDockerfile(VulcanForgeConfig cfg, File projectDir) {
-        String rel = cfg.getDockerfilePath() != null ? cfg.getDockerfilePath() : "Dockerfile";
+    /**
+     * Onde o Dockerfile <i>deveria</i> estar, sem checar se existe: {@code dockerfilePath}
+     * absoluto ou relativo a {@code projectDir} (default {@code Dockerfile}).
+     */
+    public static File dockerfileFor(String dockerfilePath, File projectDir) {
+        String rel = (dockerfilePath == null || dockerfilePath.isBlank()) ? "Dockerfile" : dockerfilePath;
         Path p = Paths.get(rel);
-        File dockerfile = p.isAbsolute() ? p.toFile() : new File(projectDir, rel);
+        return p.isAbsolute() ? p.toFile() : new File(projectDir, rel);
+    }
+
+    /**
+     * Se o projeto tem um Dockerfile — usado para decidir quais modulos de um reator
+     * multi-modulo viram imagem Docker.
+     */
+    public static boolean hasDockerfile(String dockerfilePath, File projectDir) {
+        return projectDir != null && dockerfileFor(dockerfilePath, projectDir).isFile();
+    }
+
+    private File resolveDockerfile(VulcanForgeConfig cfg, File projectDir) {
+        File dockerfile = dockerfileFor(cfg.getDockerfilePath(), projectDir);
         if (!dockerfile.isFile()) {
             throw new ForgeException("Dockerfile nao encontrado em: " + dockerfile.getAbsolutePath()
                     + ". Coloque um Dockerfile na raiz do projeto ou configure 'dockerfilePath'.");

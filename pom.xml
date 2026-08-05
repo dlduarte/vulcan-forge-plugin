@@ -6,7 +6,7 @@
 
     <groupId>io.github.dlduarte</groupId>
     <artifactId>vulcan-forge-parent</artifactId>
-    <version>1.1.0</version>
+    <version>1.2.0</version>
     <packaging>pom</packaging>
 
     <name>Vulcan Forge Parent</name>
@@ -54,7 +54,6 @@
         <!-- Versoes centralizadas -->
         <maven.version>3.9.6</maven.version>
         <maven.plugin.tools.version>3.13.1</maven.plugin.tools.version>
-        <mojo.executor.version>2.4.0</mojo.executor.version>
         <maven.invoker.version>3.2.0</maven.invoker.version>
         <gradle.api.version>8.8</gradle.api.version>
         <junit.version>5.10.2</junit.version>

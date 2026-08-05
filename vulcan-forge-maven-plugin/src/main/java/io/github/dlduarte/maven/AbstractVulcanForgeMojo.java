@@ -8,6 +8,7 @@ import io.github.dlduarte.config.Credentials;
 import io.github.dlduarte.config.EnabledGoals;
 import io.github.dlduarte.config.ForgeGoal;
 import io.github.dlduarte.config.VulcanForgeConfig;
+import org.apache.maven.execution.MavenSession;
 import org.apache.maven.plugin.AbstractMojo;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugins.annotations.Component;
@@ -24,6 +25,7 @@ import org.apache.maven.settings.crypto.SettingsDecryptionResult;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 
 /**
  * Base dos Mojos do Vulcan Forge.
@@ -38,8 +40,14 @@ import java.util.Map;
  */
 public abstract class AbstractVulcanForgeMojo extends AbstractMojo {
 
+    /** Sufixo da propriedade {@code vulcanforge.enabledGoals}, lida por modulo no reator. */
+    static final String KEY_ENABLED_GOALS = "enabledGoals";
+
     @Parameter(defaultValue = "${project}", readonly = true, required = true)
     protected MavenProject project;
+
+    @Parameter(defaultValue = "${session}", readonly = true, required = true)
+    protected MavenSession session;
 
     @Parameter(defaultValue = "${settings}", readonly = true, required = true)
     protected Settings settings;
@@ -100,26 +108,117 @@ public abstract class AbstractVulcanForgeMojo extends AbstractMojo {
         }
     }
 
-    protected VulcanForgeConfig resolveConfig() {
-        Map<String, String> projectOverrides = new HashMap<>();
-        put(projectOverrides, ConfigResolver.KEY_TARGET, target);
-        put(projectOverrides, ConfigResolver.KEY_NAMESPACE, namespace);
-        put(projectOverrides, ConfigResolver.KEY_IMAGE_NAME, imageName);
-        put(projectOverrides, ConfigResolver.KEY_TAG, tag);
-        put(projectOverrides, ConfigResolver.KEY_DOCKERFILE_PATH, dockerfilePath);
-        if (removeLocalImage != null) {
-            projectOverrides.put(ConfigResolver.KEY_REMOVE_LOCAL_IMAGE, String.valueOf(removeLocalImage));
+    /**
+     * Os goals habilitados <b>num modulo</b> do reator. Como os goals sao agregadores e rodam
+     * uma unica vez no topo, e daqui que sai a declaracao de cada modulo — a
+     * {@code <configuration>} do plugin so e lida no projeto de topo.
+     *
+     * <p>Precedencia: {@code -D} da linha de comando &gt; {@code <properties>} efetivas do
+     * modulo &gt; {@code <configuration>} do plugin (declarada no parent). Como as
+     * {@code <properties>} de um modulo ja incluem o que ele herda, declarar uma vez no parent
+     * vale para todos, e um modulo restringe sobrescrevendo
+     * {@code <vulcanforge.enabledGoals>} nas suas proprias {@code <properties>}.
+     */
+    protected EnabledGoals enabledGoalsFor(MavenProject module) {
+        String declared = override(module, KEY_ENABLED_GOALS, null);
+        List<String> values = declared != null
+                ? ReactorModules.parseList(declared)
+                : enabledGoals;
+        return EnabledGoals.parse(values, BuildTool.MAVEN);
+    }
+
+    /**
+     * Fail-fast do reator: exige que <b>pelo menos um</b> modulo tenha declarado o goal. Num
+     * projeto de um modulo so, delega para {@link #requireGoalEnabled} — a mensagem e
+     * exatamente a mesma de sempre.
+     *
+     * @throws MojoExecutionException se nenhum modulo do reator declarar o goal
+     */
+    protected void requireAnyModuleEnables(ForgeGoal goal) throws MojoExecutionException {
+        List<MavenProject> reactor = session.getProjects();
+        if (reactor.size() == 1) {
+            requireGoalEnabled(goal);
+            return;
         }
+        for (MavenProject module : reactor) {
+            if (enabledGoalsFor(module).isEnabled(goal)) {
+                return;
+            }
+        }
+        throw new MojoExecutionException("vulcan-forge: nenhum modulo deste reator declara o goal '"
+                + goal.mavenGoal() + "' (" + goal.description() + ").\n"
+                + "Declare no <configuration> do vulcan-forge-maven-plugin no parent pom, para valer "
+                + "para todos os modulos:\n\n"
+                + "  <enabledGoals>\n    <goal>" + goal.mavenGoal() + "</goal>\n  </enabledGoals>\n\n"
+                + "Um modulo pode restringir o que herdou com "
+                + "<vulcanforge.enabledGoals> nas suas <properties>.");
+    }
+
+    protected VulcanForgeConfig resolveConfig() {
+        return resolveConfig(project);
+    }
+
+    /**
+     * Resolve a config de um modulo especifico do reator. Os defaults dinamicos
+     * ({@code imageName}, {@code tag}) vem do proprio modulo, de modo que cada servico de um
+     * projeto multi-modulo ganha a sua imagem sem configuracao adicional.
+     */
+    protected VulcanForgeConfig resolveConfig(MavenProject module) {
+        Map<String, String> projectOverrides = new HashMap<>();
+        put(projectOverrides, ConfigResolver.KEY_TARGET,
+                override(module, ConfigResolver.KEY_TARGET, target));
+        put(projectOverrides, ConfigResolver.KEY_NAMESPACE,
+                override(module, ConfigResolver.KEY_NAMESPACE, namespace));
+        put(projectOverrides, ConfigResolver.KEY_IMAGE_NAME,
+                override(module, ConfigResolver.KEY_IMAGE_NAME, imageName));
+        put(projectOverrides, ConfigResolver.KEY_TAG,
+                override(module, ConfigResolver.KEY_TAG, tag));
+        put(projectOverrides, ConfigResolver.KEY_DOCKERFILE_PATH,
+                override(module, ConfigResolver.KEY_DOCKERFILE_PATH, dockerfilePath));
+        put(projectOverrides, ConfigResolver.KEY_REMOVE_LOCAL_IMAGE,
+                override(module, ConfigResolver.KEY_REMOVE_LOCAL_IMAGE,
+                        removeLocalImage == null ? null : String.valueOf(removeLocalImage)));
 
         Map<String, String> global = readGlobalFromSettings();
 
         Map<String, String> defaults = new HashMap<>();
-        defaults.put(ConfigResolver.KEY_IMAGE_NAME, project.getArtifactId());
-        if (project.getVersion() != null && !project.getVersion().isBlank()) {
-            defaults.put(ConfigResolver.KEY_TAG, project.getVersion());
+        defaults.put(ConfigResolver.KEY_IMAGE_NAME, module.getArtifactId());
+        if (module.getVersion() != null && !module.getVersion().isBlank()) {
+            defaults.put(ConfigResolver.KEY_TAG, module.getVersion());
         }
 
         return new ConfigResolver().resolve(projectOverrides, global, defaults);
+    }
+
+    /**
+     * Valor efetivo de uma chave de identidade para um modulo. Precedencia:
+     * {@code -D} da linha de comando &gt; {@code <properties>} efetivas do modulo &gt;
+     * parametro do mojo (a {@code <configuration>} declarada no parent pom).
+     *
+     * <p>As {@code <properties>} do modulo ja incluem o que ele herda do parent, entao a camada
+     * do meio e "o valor do parent, a menos que este modulo o sobrescreva" — que e exatamente o
+     * ponto de extensao por servico num reator.
+     */
+    private String override(MavenProject module, String key, String mojoParameter) {
+        return override(session != null ? session.getUserProperties() : null,
+                module.getProperties(), key, mojoParameter);
+    }
+
+    static String override(Properties commandLine, Properties moduleProperties,
+                           String key, String mojoParameter) {
+        String property = ConfigResolver.PROPERTY_PREFIX + key;
+
+        String cli = commandLine != null ? commandLine.getProperty(property) : null;
+        if (cli != null && !cli.isBlank()) {
+            return cli;
+        }
+
+        String fromModule = moduleProperties != null ? moduleProperties.getProperty(property) : null;
+        if (fromModule != null && !fromModule.isBlank()) {
+            return fromModule;
+        }
+
+        return mojoParameter;
     }
 
     private static void put(Map<String, String> map, String key, String value) {
