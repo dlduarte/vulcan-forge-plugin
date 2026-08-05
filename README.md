@@ -40,7 +40,7 @@ vulcan-forge-plugin/
 ├── vulcan-forge-core/            # lógica compartilhada (Java puro)
 ├── vulcan-forge-maven-plugin/    # plugin Maven (goals docker-publish / maven-publish)
 ├── vulcan-forge-gradle-plugin/   # plugin Gradle (id io.github.dlduarte.publish)
-├── examples/                     # projetos de exemplo (maven-app, gradle-app)
+├── examples/                     # projetos de exemplo (single-module e multi-módulo)
 └── examples/settings.example.xml # modelo da config global (Maven)
 ```
 
@@ -49,7 +49,7 @@ Requisitos: **Java 17+**, **Docker** instalado e no `PATH` (para publicar imagen
 ## Instalação
 
 Os artefatos são publicados no **Maven Central**, então basta referenciá-los — não é
-preciso compilar o plugin. Coordenadas (versão `1.0.2`):
+preciso compilar o plugin. Coordenadas (versão `1.1.0`):
 
 - `io.github.dlduarte:vulcan-forge-maven-plugin` (plugin Maven)
 - `io.github.dlduarte:vulcan-forge-gradle-plugin` (plugin Gradle, id `io.github.dlduarte.publish`)
@@ -131,6 +131,9 @@ Parâmetros úteis do build prévio (Maven): `-Dvulcanforge.skipTests=true` (pul
 `-Dvulcanforge.buildGoals="clean package"` (troca os goals), `-Dvulcanforge.skipBuild=true`
 (usa o `target/` atual, sem rebuildar).
 
+Num projeto de vários módulos, declare o plugin só no parent — veja
+[Projeto multi-módulo (reator)](#projeto-multi-módulo-reator).
+
 **Maven** — declare o plugin no `pom.xml` e escolha o servidor no `<configuration><target>`
 (valores: `nexus` | `github`; aliases `ghp`, `github-packages`, `ghcr`). O `<executions>`
 serve só para a IDE reconhecer os parâmetros (ver nota abaixo); como o goal não tem fase
@@ -140,7 +143,7 @@ padrão, **não roda num build normal**:
 <plugin>
   <groupId>io.github.dlduarte</groupId>
   <artifactId>vulcan-forge-maven-plugin</artifactId>
-  <version>1.0.2</version>
+  <version>1.1.0</version>
   <configuration>
     <target>github</target>
   </configuration>
@@ -173,7 +176,7 @@ mvn vulcan-forge:docker-publish   # ja faz clean + install + docker (um so coman
 >     <plugin>
 >       <groupId>io.github.dlduarte</groupId>
 >       <artifactId>vulcan-forge-maven-plugin</artifactId>
->       <version>1.0.2</version>
+>       <version>1.1.0</version>
 >     </plugin>
 >   </plugins></build>
 > </project>
@@ -189,7 +192,7 @@ o Docker não estiver disponível. Após o push, a imagem local é removida
 ```groovy
 buildscript {
     repositories { mavenCentral() }   // use mavenLocal() se estiver testando um build local
-    dependencies { classpath 'io.github.dlduarte:vulcan-forge-gradle-plugin:1.0.2' }
+    dependencies { classpath 'io.github.dlduarte:vulcan-forge-gradle-plugin:1.1.0' }
 }
 plugins { id 'java' }
 apply plugin: 'io.github.dlduarte.publish'
@@ -220,6 +223,9 @@ A saída do build filho fica omitida no sucesso e é impressa em caso de erro.
 
 Parâmetro útil (Maven): `-Dvulcanforge.skipTests=true` pula os testes na publicação.
 
+Num reator, o `clean deploy` do filho publica o parent e todos os módulos de uma vez — veja
+[Projeto multi-módulo (reator)](#projeto-multi-módulo-reator).
+
 ```bash
 # Maven
 mvn clean deploy                 # com distributionManagement próprio, ou:
@@ -228,6 +234,72 @@ mvn vulcan-forge:maven-publish   # usa a mavenUrl/serverId do target configurado
 # Gradle
 ./gradlew vulcanMavenPublish     # configura o repositório do maven-publish e delega a 'publish'
 ```
+
+## Projeto multi-módulo (reator)
+
+Em um monorepo no estilo Spring — um parent pom agregando serviços e bibliotecas internas —
+o plugin é declarado **uma única vez, no parent**. Os dois goals são **agregadores**: rodam
+uma só vez, no topo do reator, e fazem **um único build filho** que cobre todos os módulos
+(em vez de um build por módulo).
+
+```
+reactor-app/          # packaging pom — o plugin é declarado aqui
+├── commons/          # lib interna, sem Dockerfile
+├── service-a/        # Dockerfile → vira imagem
+└── service-b/        # Dockerfile → vira imagem
+```
+
+```bash
+mvn vulcan-forge:docker-publish    # 1 'clean install' do reator + imagem de service-a e service-b
+mvn vulcan-forge:maven-publish     # 1 'clean deploy' do reator inteiro (parent + módulos)
+```
+
+**Quais módulos viram imagem** é automático: todo módulo com `packaging != pom` **e** um
+`Dockerfile`. O parent e as libs internas ficam de fora sem configuração nenhuma. Cada módulo
+usa o próprio `artifactId`/`version` como `imageName`/`tag`.
+
+Selecionar um subconjunto:
+
+```bash
+mvn vulcan-forge:docker-publish -pl service-a              # -pl da linha de comando
+mvn vulcan-forge:docker-publish -Dvulcanforge.modules=service-a,service-b
+```
+
+A seleção (`-pl`/`-am`) é reproduzida no build filho. No `docker-publish` o `-am` é sempre
+aplicado, para que as dependências irmãs do módulo selecionado compilem.
+
+**Sobrescrever ou excluir por módulo** — nas `<properties>` do pom do próprio módulo, que
+têm precedência sobre a `<configuration>` herdada do parent (e perdem para um `-D` da linha
+de comando):
+
+```xml
+<properties>
+  <vulcanforge.imageName>app-b</vulcanforge.imageName>  <!-- também: namespace, tag, dockerfilePath -->
+  <vulcanforge.skip>true</vulcanforge.skip>             <!-- fora do docker-publish -->
+  <maven.deploy.skip>true</maven.deploy.skip>           <!-- fora do maven-publish (nativo do Maven) -->
+</properties>
+```
+
+> **Não defina `imageName` ou `tag` no parent nem no `settings.xml` de um reator** — o valor
+> valeria para todos os módulos e um sobrescreveria a imagem do outro. O goal detecta isso e
+> falha cedo, apontando os módulos em conflito.
+
+**Gradle** — aplique o plugin **só no root**; ele se propaga para os subprojects e as tasks
+do root viram agregadoras:
+
+```groovy
+// build.gradle do root
+apply plugin: 'io.github.dlduarte.publish'
+subprojects { apply plugin: 'java' }
+```
+
+```bash
+./gradlew dockerPublish              # imagem de cada subproject que tenha Dockerfile
+./gradlew :service-a:dockerPublish   # só um subproject
+```
+
+Por subproject, a DSL sobrescreve o que veio do root — inclusive o opt-out
+`vulcanForge { skip = true }`.
 
 ## Alvos suportados
 
@@ -241,7 +313,13 @@ Para GitHub Packages com Docker, `namespace` é o `OWNER`; a referência final f
 
 ## Exemplos
 
-Veja [`examples/maven-app`](examples/maven-app) e [`examples/gradle-app`](examples/gradle-app).
+| Exemplo | O que mostra |
+|---------|--------------|
+| [`examples/maven-app`](examples/maven-app) | projeto Maven de um módulo só |
+| [`examples/gradle-app`](examples/gradle-app) | projeto Gradle de um módulo só |
+| [`examples/maven-reactor-app`](examples/maven-reactor-app) | reator com parent + 2 serviços + 1 lib |
+| [`examples/gradle-multi-project`](examples/gradle-multi-project) | build multi-projeto equivalente |
+
 Para testar contra um registry local:
 
 ```bash
@@ -249,6 +327,9 @@ docker run -d -p 5000:5000 --name registry registry:2
 
 # Maven (config global vem do settings de exemplo)
 cd examples/maven-app && mvn -s ../settings.example.xml vulcan-forge:docker-publish
+
+# Maven multi-módulo — publica service-a e service-b, ignora o parent e commons
+cd examples/maven-reactor-app && mvn -s ../settings.example.xml vulcan-forge:docker-publish
 
 # Gradle (config global vem do gradle.properties do projeto de exemplo)
 cd examples/gradle-app && ./gradlew clean dockerPublish

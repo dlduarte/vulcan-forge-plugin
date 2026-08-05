@@ -4,6 +4,7 @@ import io.github.dlduarte.ForgeLogger;
 import io.github.dlduarte.config.ConfigResolver;
 import io.github.dlduarte.config.Credentials;
 import io.github.dlduarte.config.VulcanForgeConfig;
+import org.apache.maven.execution.MavenSession;
 import org.apache.maven.plugin.AbstractMojo;
 import org.apache.maven.plugins.annotations.Component;
 import org.apache.maven.plugins.annotations.Parameter;
@@ -19,6 +20,7 @@ import org.apache.maven.settings.crypto.SettingsDecryptionResult;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 
 /**
  * Base dos Mojos do Vulcan Forge.
@@ -32,6 +34,9 @@ public abstract class AbstractVulcanForgeMojo extends AbstractMojo {
 
     @Parameter(defaultValue = "${project}", readonly = true, required = true)
     protected MavenProject project;
+
+    @Parameter(defaultValue = "${session}", readonly = true, required = true)
+    protected MavenSession session;
 
     @Parameter(defaultValue = "${settings}", readonly = true, required = true)
     protected Settings settings;
@@ -66,25 +71,70 @@ public abstract class AbstractVulcanForgeMojo extends AbstractMojo {
     protected boolean skip;
 
     protected VulcanForgeConfig resolveConfig() {
+        return resolveConfig(project);
+    }
+
+    /**
+     * Resolve a config de um modulo especifico do reator. Os defaults dinamicos
+     * ({@code imageName}, {@code tag}) vem do proprio modulo, de modo que cada servico de um
+     * projeto multi-modulo ganha a sua imagem sem configuracao adicional.
+     */
+    protected VulcanForgeConfig resolveConfig(MavenProject module) {
         Map<String, String> projectOverrides = new HashMap<>();
-        put(projectOverrides, ConfigResolver.KEY_TARGET, target);
-        put(projectOverrides, ConfigResolver.KEY_NAMESPACE, namespace);
-        put(projectOverrides, ConfigResolver.KEY_IMAGE_NAME, imageName);
-        put(projectOverrides, ConfigResolver.KEY_TAG, tag);
-        put(projectOverrides, ConfigResolver.KEY_DOCKERFILE_PATH, dockerfilePath);
-        if (removeLocalImage != null) {
-            projectOverrides.put(ConfigResolver.KEY_REMOVE_LOCAL_IMAGE, String.valueOf(removeLocalImage));
-        }
+        put(projectOverrides, ConfigResolver.KEY_TARGET,
+                override(module, ConfigResolver.KEY_TARGET, target));
+        put(projectOverrides, ConfigResolver.KEY_NAMESPACE,
+                override(module, ConfigResolver.KEY_NAMESPACE, namespace));
+        put(projectOverrides, ConfigResolver.KEY_IMAGE_NAME,
+                override(module, ConfigResolver.KEY_IMAGE_NAME, imageName));
+        put(projectOverrides, ConfigResolver.KEY_TAG,
+                override(module, ConfigResolver.KEY_TAG, tag));
+        put(projectOverrides, ConfigResolver.KEY_DOCKERFILE_PATH,
+                override(module, ConfigResolver.KEY_DOCKERFILE_PATH, dockerfilePath));
+        put(projectOverrides, ConfigResolver.KEY_REMOVE_LOCAL_IMAGE,
+                override(module, ConfigResolver.KEY_REMOVE_LOCAL_IMAGE,
+                        removeLocalImage == null ? null : String.valueOf(removeLocalImage)));
 
         Map<String, String> global = readGlobalFromSettings();
 
         Map<String, String> defaults = new HashMap<>();
-        defaults.put(ConfigResolver.KEY_IMAGE_NAME, project.getArtifactId());
-        if (project.getVersion() != null && !project.getVersion().isBlank()) {
-            defaults.put(ConfigResolver.KEY_TAG, project.getVersion());
+        defaults.put(ConfigResolver.KEY_IMAGE_NAME, module.getArtifactId());
+        if (module.getVersion() != null && !module.getVersion().isBlank()) {
+            defaults.put(ConfigResolver.KEY_TAG, module.getVersion());
         }
 
         return new ConfigResolver().resolve(projectOverrides, global, defaults);
+    }
+
+    /**
+     * Valor efetivo de uma chave de identidade para um modulo. Precedencia:
+     * {@code -D} da linha de comando &gt; {@code <properties>} efetivas do modulo &gt;
+     * parametro do mojo (a {@code <configuration>} declarada no parent pom).
+     *
+     * <p>As {@code <properties>} do modulo ja incluem o que ele herda do parent, entao a camada
+     * do meio e "o valor do parent, a menos que este modulo o sobrescreva" — que e exatamente o
+     * ponto de extensao por servico num reator.
+     */
+    private String override(MavenProject module, String key, String mojoParameter) {
+        return override(session != null ? session.getUserProperties() : null,
+                module.getProperties(), key, mojoParameter);
+    }
+
+    static String override(Properties commandLine, Properties moduleProperties,
+                           String key, String mojoParameter) {
+        String property = ConfigResolver.PROPERTY_PREFIX + key;
+
+        String cli = commandLine != null ? commandLine.getProperty(property) : null;
+        if (cli != null && !cli.isBlank()) {
+            return cli;
+        }
+
+        String fromModule = moduleProperties != null ? moduleProperties.getProperty(property) : null;
+        if (fromModule != null && !fromModule.isBlank()) {
+            return fromModule;
+        }
+
+        return mojoParameter;
     }
 
     private static void put(Map<String, String> map, String key, String value) {

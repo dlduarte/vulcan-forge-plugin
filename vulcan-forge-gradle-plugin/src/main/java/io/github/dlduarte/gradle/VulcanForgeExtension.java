@@ -12,6 +12,9 @@ package io.github.dlduarte.gradle;
  *     // imageName, tag, dockerfilePath tambem podem ser sobrescritos
  * }
  * </pre>
+ *
+ * <p>Num build multi-projeto, um subproject pode se excluir da publicacao com
+ * {@code vulcanForge { skip = true }} (equivalente ao {@code vulcanforge.skip} do Maven).
  */
 public class VulcanForgeExtension {
 
@@ -21,6 +24,7 @@ public class VulcanForgeExtension {
     private String tag;
     private String dockerfilePath;
     private Boolean removeLocalImage;
+    private boolean skip;
 
     public String getTarget() {
         return target;
@@ -68,5 +72,13 @@ public class VulcanForgeExtension {
 
     public void setRemoveLocalImage(Boolean removeLocalImage) {
         this.removeLocalImage = removeLocalImage;
+    }
+
+    public boolean isSkip() {
+        return skip;
+    }
+
+    public void setSkip(boolean skip) {
+        this.skip = skip;
     }
 }

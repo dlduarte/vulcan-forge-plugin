@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.example</groupId>
+    <artifactId>reactor-app</artifactId>
+    <version>1.0.0</version>
+    <packaging>pom</packaging>
+
+    <name>Exemplo de reator multi-modulo</name>
+
+    <!--
+      Reator no estilo de um monorepo Spring: dois servicos que viram imagem Docker e uma
+      biblioteca interna compartilhada. O Vulcan Forge e declarado UMA UNICA VEZ aqui no parent.
+
+        mvn vulcan-forge:docker-publish    -> um 'clean install' do reator + imagem de service-a e service-b
+        mvn vulcan-forge:maven-publish     -> um 'clean deploy' do reator inteiro
+        mvn vulcan-forge:docker-publish -pl service-a    -> so a imagem do service-a
+
+      'commons' e este parent ficam de fora da publicacao Docker automaticamente: o parent tem
+      packaging=pom e a lib nao tem Dockerfile.
+    -->
+
+    <modules>
+        <module>commons</module>
+        <module>service-a</module>
+        <module>service-b</module>
+    </modules>
+
+    <properties>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <maven.compiler.release>17</maven.compiler.release>
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>com.example</groupId>
+                <artifactId>commons</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <build>
+        <!-- jar com nome previsivel, para o 'COPY target/<artifactId>.jar' dos Dockerfiles -->
+        <finalName>${project.artifactId}</finalName>
+
+        <plugins>
+            <plugin>
+                <groupId>io.github.dlduarte</groupId>
+                <artifactId>vulcan-forge-maven-plugin</artifactId>
+                <version>1.1.0</version>
+                <configuration>
+                    <!-- nexus | github (aliases: ghp, github-packages, ghcr) -->
+                    <target>nexus</target>
+                    <!-- Nao defina 'imageName' aqui: num reator ele valeria para todos os
+                         modulos. Sem ele, cada modulo usa o proprio artifactId. -->
+                </configuration>
+                <!-- O <execution> declara o goal so para a IDE reconhecer os parametros do
+                     <configuration>. Como docker-publish nao tem fase padrao, NAO roda num
+                     build normal. -->
+                <executions>
+                    <execution>
+                        <id>vulcan-forge-docker</id>
+                        <goals>
+                            <goal>docker-publish</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>

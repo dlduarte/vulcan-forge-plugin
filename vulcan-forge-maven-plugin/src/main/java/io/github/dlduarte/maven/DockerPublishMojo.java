@@ -6,23 +6,15 @@ import io.github.dlduarte.config.Credentials;
 import io.github.dlduarte.config.VulcanForgeConfig;
 import io.github.dlduarte.docker.DockerImagePublisher;
 import io.github.dlduarte.process.ProcessRunner;
-import org.apache.maven.execution.MavenExecutionRequest;
-import org.apache.maven.execution.MavenSession;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
-import org.apache.maven.shared.invoker.DefaultInvocationRequest;
-import org.apache.maven.shared.invoker.DefaultInvoker;
-import org.apache.maven.shared.invoker.InvocationOutputHandler;
-import org.apache.maven.shared.invoker.InvocationRequest;
-import org.apache.maven.shared.invoker.InvocationResult;
-import org.apache.maven.shared.invoker.Invoker;
-import org.apache.maven.shared.invoker.MavenInvocationException;
+import org.apache.maven.project.MavenProject;
 
-import java.io.File;
 import java.util.ArrayList;
-import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 
 /**
@@ -34,12 +26,14 @@ import java.util.Properties;
  * compile/testes fica omitido); em caso de erro, despeja o log do build para diagnostico.
  * Isso garante um unico jar atualizado em {@code target/} (Dockerfiles usam
  * {@code COPY target/*.jar}).
+ *
+ * <p><b>Multi-modulo:</b> o goal e um agregador — roda uma unica vez, no topo do reator, mesmo
+ * que o plugin esteja declarado num parent pom herdado por N modulos. Faz <b>um</b> build do
+ * reator inteiro e depois publica a imagem de <b>cada modulo que tenha Dockerfile</b>
+ * (ver {@link ReactorModules}). O parent e as libs internas ficam de fora automaticamente.
  */
-@Mojo(name = "docker-publish", requiresProject = true, threadSafe = true)
+@Mojo(name = "docker-publish", aggregator = true, requiresProject = true, threadSafe = true)
 public class DockerPublishMojo extends AbstractVulcanForgeMojo {
-
-    @Parameter(defaultValue = "${session}", readonly = true, required = true)
-    private MavenSession session;
 
     /** Goals do build previo do artefato. */
     @Parameter(property = "vulcanforge.buildGoals", defaultValue = "clean install")
@@ -53,40 +47,111 @@ public class DockerPublishMojo extends AbstractVulcanForgeMojo {
     @Parameter(property = "vulcanforge.skipBuild", defaultValue = "false")
     private boolean skipBuild;
 
+    /**
+     * Restringe a publicacao a estes modulos do reator (artifactIds separados por virgula).
+     * Vazio = todos os modulos com Dockerfile. Alternativa ao {@code -pl} da linha de comando.
+     */
+    @Parameter(property = "vulcanforge.modules")
+    private String modules;
+
     @Override
     public void execute() throws MojoExecutionException {
         if (skip) {
             getLog().info("vulcan-forge: docker-publish pulado (vulcanforge.skip=true).");
             return;
         }
+        if (ForkedMavenBuild.isForked(session)) {
+            getLog().debug("vulcan-forge: docker-publish pulado dentro do build filho.");
+            return;
+        }
 
-        VulcanForgeConfig cfg = resolveConfig();
-        getLog().info("vulcan-forge: " + cfg);
-
-        Credentials creds = resolveCredentials(cfg.getServerId());
         ForgeLogger log = logger();
         DockerImagePublisher publisher = new DockerImagePublisher(new ProcessRunner(log), log);
 
+        Map<MavenProject, VulcanForgeConfig> configs;
+        Map<MavenProject, Credentials> credentials = new LinkedHashMap<>();
         try {
-            // Fail-fast: valida config + ambiente ANTES do build (que e caro).
-            publisher.validate(cfg, creds, project.getBasedir());
-            publisher.checkDockerAvailable();
+            List<MavenProject> selected = ReactorModules.selectForDocker(
+                    session.getProjects(),
+                    module -> resolveConfig(module).getDockerfilePath(),
+                    ReactorModules.parseList(modules));
 
-            if (!skipBuild) {
-                runProjectBuild();
+            configs = new LinkedHashMap<>();
+            for (MavenProject module : selected) {
+                VulcanForgeConfig cfg = resolveConfig(module);
+                configs.put(module, cfg);
+                credentials.put(module, resolveCredentials(cfg.getServerId()));
             }
+            checkDistinctImages(configs);
+            logSelection(configs);
 
-            publisher.publish(cfg, creds, project.getBasedir());
+            // Fail-fast: valida config + ambiente de TODOS os modulos ANTES do build (que e caro).
+            for (Map.Entry<MavenProject, VulcanForgeConfig> entry : configs.entrySet()) {
+                MavenProject module = entry.getKey();
+                publisher.validate(entry.getValue(), credentials.get(module), module.getBasedir());
+            }
+            publisher.checkDockerAvailable();
+        } catch (ForgeException e) {
+            throw new MojoExecutionException(e.getMessage(), e);
+        }
+
+        if (!skipBuild) {
+            runReactorBuild();
+        }
+
+        try {
+            int index = 0;
+            int total = configs.size();
+            for (Map.Entry<MavenProject, VulcanForgeConfig> entry : configs.entrySet()) {
+                MavenProject module = entry.getKey();
+                index++;
+                if (total > 1) {
+                    getLog().info("vulcan-forge: [" + index + "/" + total + "] " + module.getArtifactId());
+                }
+                publisher.publish(entry.getValue(), credentials.get(module), module.getBasedir());
+            }
         } catch (ForgeException e) {
             throw new MojoExecutionException(e.getMessage(), e);
         }
     }
 
+    private void logSelection(Map<MavenProject, VulcanForgeConfig> configs) {
+        if (configs.size() == 1) {
+            getLog().info("vulcan-forge: " + configs.values().iterator().next());
+            return;
+        }
+        getLog().info("vulcan-forge: " + configs.size() + " modulos do reator com imagem Docker:");
+        for (Map.Entry<MavenProject, VulcanForgeConfig> entry : configs.entrySet()) {
+            getLog().info("vulcan-forge:   " + entry.getKey().getArtifactId() + " -> "
+                    + DockerImagePublisher.buildRemoteRef(entry.getValue()));
+        }
+    }
+
     /**
-     * Roda {@code buildGoals} num Maven filho, capturando toda a saida. So imprime em caso
-     * de falha (com o log do build) — no sucesso o log verboso fica omitido.
+     * Dois modulos publicando na mesma referencia remota significa que um sobrescreveria o outro
+     * — tipicamente por um {@code imageName}/{@code tag} fixo herdado do parent ou vindo do
+     * settings.xml, que num reator se aplicaria a todos os modulos.
      */
-    private void runProjectBuild() throws MojoExecutionException {
+    private void checkDistinctImages(Map<MavenProject, VulcanForgeConfig> configs) {
+        Map<String, String> byRef = new LinkedHashMap<>();
+        for (Map.Entry<MavenProject, VulcanForgeConfig> entry : configs.entrySet()) {
+            String ref = DockerImagePublisher.buildRemoteRef(entry.getValue());
+            String owner = byRef.put(ref, entry.getKey().getArtifactId());
+            if (owner != null) {
+                throw new ForgeException("Os modulos '" + owner + "' e '" + entry.getKey().getArtifactId()
+                        + "' publicariam na mesma imagem (" + ref + "), um sobrescrevendo o outro. "
+                        + "Remova o 'imageName'/'tag' fixo da configuracao global ou do parent pom "
+                        + "(sem ele cada modulo usa o proprio artifactId/version), ou defina "
+                        + "'vulcanforge.imageName' nas <properties> de cada modulo.");
+            }
+        }
+    }
+
+    /**
+     * Roda {@code buildGoals} num Maven filho, na raiz do reator. Um unico build cobre todos os
+     * modulos, com o Maven resolvendo a ordem e as dependencias entre eles.
+     */
+    private void runReactorBuild() throws MojoExecutionException {
         List<String> goals = new ArrayList<>();
         for (String g : buildGoals.trim().split("\\s+")) {
             if (!g.isBlank()) {
@@ -95,80 +160,14 @@ public class DockerPublishMojo extends AbstractVulcanForgeMojo {
         }
         getLog().info("vulcan-forge: preparando o artefato (" + String.join(" ", goals) + ")...");
 
-        InvocationRequest request = new DefaultInvocationRequest();
-        request.setPomFile(project.getFile());
-        request.setBaseDirectory(project.getBasedir());
-        request.setGoals(goals);
-        request.setBatchMode(true);
-
-        // Propaga o contexto da execucao atual para o build filho.
-        MavenExecutionRequest parent = session.getRequest();
-        if (parent.getUserSettingsFile() != null) {
-            request.setUserSettingsFile(parent.getUserSettingsFile());
-        }
-        if (parent.getGlobalSettingsFile() != null) {
-            request.setGlobalSettingsFile(parent.getGlobalSettingsFile());
-        }
-        if (session.getLocalRepository() != null && session.getLocalRepository().getBasedir() != null) {
-            request.setLocalRepositoryDirectory(new File(session.getLocalRepository().getBasedir()));
-        }
-        if (parent.getActiveProfiles() != null && !parent.getActiveProfiles().isEmpty()) {
-            request.setProfiles(new ArrayList<>(parent.getActiveProfiles()));
-        }
-        request.setOffline(parent.isOffline());
+        Properties props = new Properties();
         if (skipTests) {
-            Properties props = new Properties();
             props.setProperty("skipTests", "true");
-            request.setProperties(props);
         }
 
-        // Captura stdout+stderr; so mostramos em caso de erro.
-        StringBuilder captured = new StringBuilder();
-        InvocationOutputHandler handler = line -> captured.append(line).append(System.lineSeparator());
-        request.setOutputHandler(handler);
-        request.setErrorHandler(handler);
-
-        Invoker invoker = new DefaultInvoker();
-        File mavenHome = resolveMavenHome();
-        if (mavenHome != null) {
-            invoker.setMavenHome(mavenHome);
-        }
-
-        InvocationResult result;
-        try {
-            result = invoker.execute(request);
-        } catch (MavenInvocationException e) {
-            dumpBuildLog(captured);
-            throw new MojoExecutionException("Nao foi possivel executar o build previo do projeto. "
-                    + "Verifique se o Maven esta acessivel (maven.home/M2_HOME).", e);
-        }
-
-        if (result.getExitCode() != 0) {
-            dumpBuildLog(captured);
-            throw new MojoExecutionException("O build previo ('" + String.join(" ", goals)
-                    + "') falhou com exit code " + result.getExitCode() + ".",
-                    result.getExecutionException());
-        }
+        // alsoMakeUpstream: com -pl, o filho ainda precisa compilar as dependencias irmas.
+        new ForkedMavenBuild(session, getLog()).run(goals, props, true, "build previo");
 
         getLog().info("vulcan-forge: artefato pronto.");
-    }
-
-    private void dumpBuildLog(StringBuilder captured) {
-        if (captured.length() > 0) {
-            getLog().error("--- saida do build previo ---");
-            getLog().error(System.lineSeparator() + captured);
-            getLog().error("--- fim da saida do build previo ---");
-        }
-    }
-
-    private File resolveMavenHome() {
-        String home = System.getProperty("maven.home");
-        if (home == null || home.isBlank()) {
-            home = System.getenv("MAVEN_HOME");
-        }
-        if (home == null || home.isBlank()) {
-            home = System.getenv("M2_HOME");
-        }
-        return (home == null || home.isBlank()) ? null : new File(home);
     }
 }

@@ -1,0 +1,3 @@
+// Biblioteca interna: entra no build, mas fica de fora do dockerPublish sem configuracao
+// nenhuma — nao tem Dockerfile. Para tirar tambem do vulcanMavenPublish:
+// vulcanForge { skip = true }
