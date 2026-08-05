@@ -20,6 +20,7 @@
           Outras chaves uteis: vulcanforge.namespace, vulcanforge.tag, vulcanforge.dockerfilePath.
           Para tirar o modulo da publicacao Docker: <vulcanforge.skip>true</vulcanforge.skip>
           Para tirar do deploy Maven:              <maven.deploy.skip>true</maven.deploy.skip>
+          Para restringir o que ele pode publicar: <vulcanforge.enabledGoals>docker-publish</...>
         -->
         <vulcanforge.imageName>app-b</vulcanforge.imageName>
     </properties>

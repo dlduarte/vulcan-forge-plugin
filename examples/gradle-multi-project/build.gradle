@@ -4,7 +4,7 @@ buildscript {
         mavenCentral()
     }
     dependencies {
-        classpath 'io.github.dlduarte:vulcan-forge-gradle-plugin:1.1.0'
+        classpath 'io.github.dlduarte:vulcan-forge-gradle-plugin:1.2.0'
     }
 }
 
@@ -25,4 +25,11 @@ allprojects {
 
 subprojects {
     apply plugin: 'java'
+
+    // O que cada subproject pode publicar. Declarado aqui vale para todos; um subproject
+    // restringe sobrescrevendo o seu proprio vulcanForge { enabledGoals = [...] }
+    // (ver commons). O root nao declara nada: as tasks dele so agregam as dos subprojects.
+    vulcanForge {
+        enabledGoals = ['dockerPublish', 'vulcanMavenPublish']
+    }
 }

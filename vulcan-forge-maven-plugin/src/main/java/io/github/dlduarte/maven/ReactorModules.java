@@ -1,6 +1,8 @@
 package io.github.dlduarte.maven;
 
 import io.github.dlduarte.ForgeException;
+import io.github.dlduarte.config.EnabledGoals;
+import io.github.dlduarte.config.ForgeGoal;
 import io.github.dlduarte.docker.DockerImagePublisher;
 import org.apache.maven.project.MavenProject;
 
@@ -29,6 +31,9 @@ final class ReactorModules {
     /** Opt-out por modulo, lido das {@code <properties>} do pom do proprio modulo. */
     static final String SKIP_PROPERTY = "vulcanforge.skip";
 
+    /** Opt-out nativo do Maven para o deploy, tambem por modulo. */
+    static final String DEPLOY_SKIP_PROPERTY = "maven.deploy.skip";
+
     private ReactorModules() {
     }
 
@@ -47,12 +52,14 @@ final class ReactorModules {
      * @param reactor          projetos do reator ({@code session.getProjects()})
      * @param dockerfilePathOf caminho do Dockerfile efetivo de cada modulo (cada um pode
      *                         sobrescrever {@code vulcanforge.dockerfilePath})
+     * @param enabledGoalsOf   goals que cada modulo declarou em {@code <enabledGoals>}
      * @param explicitModules  artifactIds a considerar; vazio = todos
      * @return os modulos publicaveis, na ordem do reator
      * @throws ForgeException se a selecao ficar vazia ou citar um artifactId inexistente
      */
     static List<MavenProject> selectForDocker(List<MavenProject> reactor,
                                               Function<MavenProject, String> dockerfilePathOf,
+                                              Function<MavenProject, EnabledGoals> enabledGoalsOf,
                                               List<String> explicitModules) {
         List<MavenProject> candidates = new ArrayList<>(reactor);
 
@@ -77,12 +84,17 @@ final class ReactorModules {
         List<MavenProject> selected = new ArrayList<>();
         List<String> skippedByProperty = new ArrayList<>();
         List<String> skippedWithoutDockerfile = new ArrayList<>();
+        List<String> skippedNotEnabled = new ArrayList<>();
         for (MavenProject p : candidates) {
             if ("pom".equals(p.getPackaging())) {
                 continue;
             }
             if (isSkipped(p)) {
                 skippedByProperty.add(p.getArtifactId());
+                continue;
+            }
+            if (!enabledGoalsOf.apply(p).isEnabled(ForgeGoal.DOCKER)) {
+                skippedNotEnabled.add(p.getArtifactId());
                 continue;
             }
             String path = dockerfilePathOf.apply(p);
@@ -95,9 +107,20 @@ final class ReactorModules {
         }
 
         if (selected.isEmpty()) {
-            throw new ForgeException(emptySelectionMessage(skippedByProperty, skippedWithoutDockerfile));
+            throw new ForgeException(emptySelectionMessage(
+                    skippedByProperty, skippedWithoutDockerfile, skippedNotEnabled));
         }
         return selected;
+    }
+
+    /**
+     * Modulos que o {@code clean deploy} do build filho vai realmente publicar — ou seja, os
+     * que nao desligaram o deploy com o {@code maven.deploy.skip} nativo do Maven.
+     */
+    static List<MavenProject> deployable(List<MavenProject> reactor) {
+        return reactor.stream()
+                .filter(p -> !Boolean.parseBoolean(p.getProperties().getProperty(DEPLOY_SKIP_PROPERTY)))
+                .collect(Collectors.toList());
     }
 
     /** Se o modulo se excluiu com {@code vulcanforge.skip=true} nas suas {@code <properties>}. */
@@ -107,10 +130,15 @@ final class ReactorModules {
     }
 
     private static String emptySelectionMessage(List<String> skippedByProperty,
-                                                List<String> skippedWithoutDockerfile) {
+                                                List<String> skippedWithoutDockerfile,
+                                                List<String> skippedNotEnabled) {
         StringBuilder sb = new StringBuilder("Nenhum modulo do reator tem imagem Docker para publicar.");
         if (!skippedWithoutDockerfile.isEmpty()) {
             sb.append(" Sem Dockerfile: ").append(String.join(", ", skippedWithoutDockerfile)).append('.');
+        }
+        if (!skippedNotEnabled.isEmpty()) {
+            sb.append(" Sem '").append(ForgeGoal.DOCKER.mavenGoal()).append("' no <enabledGoals>: ")
+                    .append(String.join(", ", skippedNotEnabled)).append('.');
         }
         if (!skippedByProperty.isEmpty()) {
             sb.append(" Com ").append(SKIP_PROPERTY).append("=true: ")

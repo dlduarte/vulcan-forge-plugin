@@ -3,6 +3,7 @@ package io.github.dlduarte.maven;
 import io.github.dlduarte.ForgeException;
 import io.github.dlduarte.ForgeLogger;
 import io.github.dlduarte.config.Credentials;
+import io.github.dlduarte.config.ForgeGoal;
 import io.github.dlduarte.config.VulcanForgeConfig;
 import io.github.dlduarte.docker.DockerImagePublisher;
 import io.github.dlduarte.process.ProcessRunner;
@@ -29,8 +30,9 @@ import java.util.Properties;
  *
  * <p><b>Multi-modulo:</b> o goal e um agregador — roda uma unica vez, no topo do reator, mesmo
  * que o plugin esteja declarado num parent pom herdado por N modulos. Faz <b>um</b> build do
- * reator inteiro e depois publica a imagem de <b>cada modulo que tenha Dockerfile</b>
- * (ver {@link ReactorModules}). O parent e as libs internas ficam de fora automaticamente.
+ * reator inteiro e depois publica a imagem de <b>cada modulo que tenha Dockerfile e declare
+ * {@code docker-publish}</b> em {@code <enabledGoals>} (ver {@link ReactorModules}). O parent e
+ * as libs internas ficam de fora automaticamente.
  */
 @Mojo(name = "docker-publish", aggregator = true, requiresProject = true, threadSafe = true)
 public class DockerPublishMojo extends AbstractVulcanForgeMojo {
@@ -65,6 +67,9 @@ public class DockerPublishMojo extends AbstractVulcanForgeMojo {
             return;
         }
 
+        // Antes de qualquer coisa: algum modulo do reator pode publicar imagem Docker?
+        requireAnyModuleEnables(ForgeGoal.DOCKER);
+
         ForgeLogger log = logger();
         DockerImagePublisher publisher = new DockerImagePublisher(new ProcessRunner(log), log);
 
@@ -74,6 +79,7 @@ public class DockerPublishMojo extends AbstractVulcanForgeMojo {
             List<MavenProject> selected = ReactorModules.selectForDocker(
                     session.getProjects(),
                     module -> resolveConfig(module).getDockerfilePath(),
+                    this::enabledGoalsFor,
                     ReactorModules.parseList(modules));
 
             configs = new LinkedHashMap<>();

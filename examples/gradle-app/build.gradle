@@ -4,7 +4,7 @@ buildscript {
         mavenCentral()
     }
     dependencies {
-        classpath 'io.github.dlduarte:vulcan-forge-gradle-plugin:1.1.0'
+        classpath 'io.github.dlduarte:vulcan-forge-gradle-plugin:1.2.0'
     }
 }
 
@@ -19,11 +19,16 @@ version = '1.0.0'
 
 // A configuracao global vem do gradle.properties (vulcanforge.*), que aponta para o
 // registry local (target=nexus) para este exemplo rodar de forma autocontida.
-// Para escolher outro servidor por-projeto, use a DSL, por exemplo:
-// vulcanForge {
-//     target = 'github'
-//     namespace = 'minha-org'
-// }
+vulcanForge {
+    // OBRIGATORIO: o que este projeto pode publicar. As tasks nao declaradas somem do
+    // grupo 'vulcan forge' e falham se forem invocadas — e assim que um projeto que so
+    // distribui o jar evita gerar uma imagem Docker por engano.
+    enabledGoals = ['dockerPublish']   // ou ['vulcanMavenPublish'], ou as duas
+
+    // Para escolher outro servidor por-projeto:
+    // target = 'github'
+    // namespace = 'minha-org'
+}
 
 jar {
     manifest {

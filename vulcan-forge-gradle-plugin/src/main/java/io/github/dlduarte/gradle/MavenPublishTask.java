@@ -1,6 +1,9 @@
 package io.github.dlduarte.gradle;
 
 import io.github.dlduarte.ForgeLogger;
+import io.github.dlduarte.config.BuildTool;
+import io.github.dlduarte.config.EnabledGoals;
+import io.github.dlduarte.config.ForgeGoal;
 import io.github.dlduarte.config.VulcanForgeConfig;
 import io.github.dlduarte.publish.MavenPackagePublisher;
 import org.gradle.api.DefaultTask;
@@ -19,6 +22,9 @@ public class MavenPublishTask extends DefaultTask {
     public void run() {
         Project project = getProject();
         VulcanForgeExtension ext = project.getExtensions().getByType(VulcanForgeExtension.class);
+
+        // Antes de qualquer coisa: este projeto pode publicar pacote Maven?
+        EnabledGoals.parse(ext.getEnabledGoals(), BuildTool.GRADLE).require(ForgeGoal.MAVEN);
 
         VulcanForgeConfig cfg = GradleConfigReader.resolve(project, ext);
         ForgeLogger log = new GradleForgeLogger(getLogger());

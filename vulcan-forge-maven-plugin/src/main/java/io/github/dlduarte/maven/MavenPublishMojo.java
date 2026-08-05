@@ -1,12 +1,15 @@
 package io.github.dlduarte.maven;
 
 import io.github.dlduarte.ForgeException;
+import io.github.dlduarte.config.ForgeGoal;
 import io.github.dlduarte.config.VulcanForgeConfig;
 import io.github.dlduarte.publish.MavenPackagePublisher;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
+import org.apache.maven.project.MavenProject;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
 
@@ -47,6 +50,10 @@ public class MavenPublishMojo extends AbstractVulcanForgeMojo {
             return;
         }
 
+        // Antes de qualquer coisa: os modulos que serao publicados declararam o goal?
+        requireAnyModuleEnables(ForgeGoal.MAVEN);
+        requireEveryDeployedModuleEnables();
+
         VulcanForgeConfig cfg = resolveConfig();
 
         String repoUrl;
@@ -75,6 +82,31 @@ public class MavenPublishMojo extends AbstractVulcanForgeMojo {
         runDeploy(altRepo);
 
         getLog().info("vulcan-forge: pacote Maven publicado.");
+    }
+
+    /**
+     * O {@code clean deploy} do filho cobre o reator inteiro de uma vez, entao a garantia do
+     * {@code <enabledGoals>} tem de valer antes do fork: <b>todo</b> modulo que o filho vai
+     * publicar precisa ter declarado {@code maven-publish}. Modulos que desligaram o deploy
+     * com {@code maven.deploy.skip} nao entram na conta — nao serao publicados.
+     */
+    private void requireEveryDeployedModuleEnables() throws MojoExecutionException {
+        List<String> notEnabled = new ArrayList<>();
+        for (MavenProject module : ReactorModules.deployable(session.getProjects())) {
+            if (!enabledGoalsFor(module).isEnabled(ForgeGoal.MAVEN)) {
+                notEnabled.add(module.getArtifactId());
+            }
+        }
+        if (notEnabled.isEmpty()) {
+            return;
+        }
+        throw new MojoExecutionException("vulcan-forge: o 'clean deploy' publicaria o reator inteiro, "
+                + "mas estes modulos nao declaram '" + ForgeGoal.MAVEN.mavenGoal()
+                + "' em <enabledGoals>: " + String.join(", ", notEnabled) + ".\n"
+                + "Para cada um, escolha: acrescente <goal>" + ForgeGoal.MAVEN.mavenGoal()
+                + "</goal> ao <vulcanforge.enabledGoals> das <properties> dele, "
+                + "ou tire-o do deploy com <" + ReactorModules.DEPLOY_SKIP_PROPERTY + ">true</"
+                + ReactorModules.DEPLOY_SKIP_PROPERTY + "> (nativo do Maven).");
     }
 
     /**

@@ -1,3 +1,7 @@
-// Biblioteca interna: entra no build, mas fica de fora do dockerPublish sem configuracao
-// nenhuma — nao tem Dockerfile. Para tirar tambem do vulcanMavenPublish:
-// vulcanForge { skip = true }
+// Biblioteca interna: distribui o jar, mas nunca vira imagem. Restringe o que herdou do
+// bloco subprojects {} do root — mesmo que alguem acrescente um Dockerfile aqui, o
+// dockerPublish nao pega este subproject. (Sem Dockerfile ele ja ficaria de fora; a
+// declaracao e a garantia.) Para tirar das duas publicacoes: vulcanForge { skip = true }
+vulcanForge {
+    enabledGoals = ['vulcanMavenPublish']
+}

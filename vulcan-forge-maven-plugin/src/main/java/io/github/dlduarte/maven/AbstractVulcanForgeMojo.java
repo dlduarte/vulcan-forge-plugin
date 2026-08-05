@@ -1,11 +1,16 @@
 package io.github.dlduarte.maven;
 
+import io.github.dlduarte.ForgeException;
 import io.github.dlduarte.ForgeLogger;
+import io.github.dlduarte.config.BuildTool;
 import io.github.dlduarte.config.ConfigResolver;
 import io.github.dlduarte.config.Credentials;
+import io.github.dlduarte.config.EnabledGoals;
+import io.github.dlduarte.config.ForgeGoal;
 import io.github.dlduarte.config.VulcanForgeConfig;
 import org.apache.maven.execution.MavenSession;
 import org.apache.maven.plugin.AbstractMojo;
+import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugins.annotations.Component;
 import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.maven.project.MavenProject;
@@ -29,8 +34,14 @@ import java.util.Properties;
  * {@code <profile>} ativo do {@code settings.xml}, organizadas por target. A unica coisa
  * que o projeto pode sobrescrever e o <b>target</b> (qual servidor: nexus ou github).
  * Credenciais vem de um {@code <server>} do {@code settings.xml} (id = {@code serverId} do target).
+ *
+ * <p>A excecao e o {@code <enabledGoals>}: essa lista e por-projeto e obrigatoria, e define
+ * quais goals do plugin podem rodar ali (ver {@link EnabledGoals}).
  */
 public abstract class AbstractVulcanForgeMojo extends AbstractMojo {
+
+    /** Sufixo da propriedade {@code vulcanforge.enabledGoals}, lida por modulo no reator. */
+    static final String KEY_ENABLED_GOALS = "enabledGoals";
 
     @Parameter(defaultValue = "${project}", readonly = true, required = true)
     protected MavenProject project;
@@ -43,6 +54,20 @@ public abstract class AbstractVulcanForgeMojo extends AbstractMojo {
 
     @Component
     protected SettingsDecrypter settingsDecrypter;
+
+    /**
+     * Goals do Vulcan Forge habilitados <b>neste projeto</b>. Obrigatorio: um goal fora da
+     * lista se recusa a rodar, para que um projeto que so distribui o jar nao acabe
+     * publicando uma imagem Docker por engano.
+     *
+     * <pre>
+     * &lt;enabledGoals&gt;
+     *   &lt;goal&gt;maven-publish&lt;/goal&gt;
+     * &lt;/enabledGoals&gt;
+     * </pre>
+     */
+    @Parameter(property = "vulcanforge.enabledGoals")
+    protected List<String> enabledGoals;
 
     // ---- Sobrescritas de identidade por-projeto (as coordenadas do servidor sao globais) ----
 
@@ -69,6 +94,65 @@ public abstract class AbstractVulcanForgeMojo extends AbstractMojo {
 
     @Parameter(property = "vulcanforge.skip", defaultValue = "false")
     protected boolean skip;
+
+    /**
+     * Fail-fast: so deixa o goal seguir se o projeto o declarou em {@code <enabledGoals>}.
+     *
+     * @throws MojoExecutionException se o goal nao estiver habilitado (ou se nada foi declarado)
+     */
+    protected void requireGoalEnabled(ForgeGoal goal) throws MojoExecutionException {
+        try {
+            EnabledGoals.parse(enabledGoals, BuildTool.MAVEN).require(goal);
+        } catch (ForgeException e) {
+            throw new MojoExecutionException(e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Os goals habilitados <b>num modulo</b> do reator. Como os goals sao agregadores e rodam
+     * uma unica vez no topo, e daqui que sai a declaracao de cada modulo — a
+     * {@code <configuration>} do plugin so e lida no projeto de topo.
+     *
+     * <p>Precedencia: {@code -D} da linha de comando &gt; {@code <properties>} efetivas do
+     * modulo &gt; {@code <configuration>} do plugin (declarada no parent). Como as
+     * {@code <properties>} de um modulo ja incluem o que ele herda, declarar uma vez no parent
+     * vale para todos, e um modulo restringe sobrescrevendo
+     * {@code <vulcanforge.enabledGoals>} nas suas proprias {@code <properties>}.
+     */
+    protected EnabledGoals enabledGoalsFor(MavenProject module) {
+        String declared = override(module, KEY_ENABLED_GOALS, null);
+        List<String> values = declared != null
+                ? ReactorModules.parseList(declared)
+                : enabledGoals;
+        return EnabledGoals.parse(values, BuildTool.MAVEN);
+    }
+
+    /**
+     * Fail-fast do reator: exige que <b>pelo menos um</b> modulo tenha declarado o goal. Num
+     * projeto de um modulo so, delega para {@link #requireGoalEnabled} — a mensagem e
+     * exatamente a mesma de sempre.
+     *
+     * @throws MojoExecutionException se nenhum modulo do reator declarar o goal
+     */
+    protected void requireAnyModuleEnables(ForgeGoal goal) throws MojoExecutionException {
+        List<MavenProject> reactor = session.getProjects();
+        if (reactor.size() == 1) {
+            requireGoalEnabled(goal);
+            return;
+        }
+        for (MavenProject module : reactor) {
+            if (enabledGoalsFor(module).isEnabled(goal)) {
+                return;
+            }
+        }
+        throw new MojoExecutionException("vulcan-forge: nenhum modulo deste reator declara o goal '"
+                + goal.mavenGoal() + "' (" + goal.description() + ").\n"
+                + "Declare no <configuration> do vulcan-forge-maven-plugin no parent pom, para valer "
+                + "para todos os modulos:\n\n"
+                + "  <enabledGoals>\n    <goal>" + goal.mavenGoal() + "</goal>\n  </enabledGoals>\n\n"
+                + "Um modulo pode restringir o que herdou com "
+                + "<vulcanforge.enabledGoals> nas suas <properties>.");
+    }
 
     protected VulcanForgeConfig resolveConfig() {
         return resolveConfig(project);

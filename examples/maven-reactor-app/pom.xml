@@ -52,10 +52,19 @@
             <plugin>
                 <groupId>io.github.dlduarte</groupId>
                 <artifactId>vulcan-forge-maven-plugin</artifactId>
-                <version>1.1.0</version>
+                <version>1.2.0</version>
                 <configuration>
                     <!-- nexus | github (aliases: ghp, github-packages, ghcr) -->
                     <target>nexus</target>
+
+                    <!-- O que o reator pode publicar. Declarado aqui, vale para todos os
+                         modulos; cada um pode restringir com <vulcanforge.enabledGoals>
+                         nas suas proprias <properties> (ver commons e service-b). -->
+                    <enabledGoals>
+                        <goal>docker-publish</goal>
+                        <goal>maven-publish</goal>
+                    </enabledGoals>
+
                     <!-- Nao defina 'imageName' aqui: num reator ele valeria para todos os
                          modulos. Sem ele, cada modulo usa o proprio artifactId. -->
                 </configuration>
