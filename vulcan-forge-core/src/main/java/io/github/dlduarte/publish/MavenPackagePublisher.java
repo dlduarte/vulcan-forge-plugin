@@ -19,7 +19,7 @@ public final class MavenPackagePublisher {
         if (url == null || url.isBlank()) {
             throw new ForgeException("URL do repositorio Maven nao configurada para o target "
                     + cfg.getTarget() + " (defina vulcanforge." + cfg.getTarget().configKey()
-                    + ".mavenUrl no settings.xml/gradle.properties).");
+                    + ".mavenUrl no settings.xml, no gradle.properties ou no ambiente).");
         }
         return url.trim();
     }

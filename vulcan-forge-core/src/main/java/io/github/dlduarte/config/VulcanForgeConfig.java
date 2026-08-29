@@ -58,7 +58,7 @@ public final class VulcanForgeConfig {
         return dockerfilePath;
     }
 
-    /** Id das credenciais (server do settings.xml / prefixo em gradle.properties). */
+    /** Id das credenciais (server do settings.xml / prefixo em gradle.properties e no ambiente). */
     public String getServerId() {
         return serverId;
     }
