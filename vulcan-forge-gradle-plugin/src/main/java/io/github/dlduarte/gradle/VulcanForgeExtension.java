@@ -14,6 +14,7 @@ import java.util.List;
  *     target = "github"        // nexus | github
  *     namespace = "minha-org"  // owner do ghcr.io, por exemplo
  *     // imageName, tag, dockerfilePath tambem podem ser sobrescritos
+ *     // skipBuild = true    // nao reconstroi antes do docker build
  * }
  * </pre>
  */
@@ -26,6 +27,7 @@ public class VulcanForgeExtension {
     private String tag;
     private String dockerfilePath;
     private Boolean removeLocalImage;
+    private Boolean skipBuild;
 
     /**
      * Tasks do Vulcan Forge habilitadas neste projeto ({@code dockerPublish},
@@ -86,5 +88,32 @@ public class VulcanForgeExtension {
 
     public void setRemoveLocalImage(Boolean removeLocalImage) {
         this.removeLocalImage = removeLocalImage;
+    }
+
+    /**
+     * Nao roda o build previo do artefato: a task {@code dockerPublish} deixa de declarar
+     * {@code dependsOn(build)} e {@code dependsOn(clean)}, e a imagem e construida a partir
+     * do que ja estiver em {@code build/libs}.
+     *
+     * <p>E o irmao Gradle do {@code -Dvulcanforge.skipBuild} do plugin Maven, e existe pelo
+     * mesmo motivo: num pipeline que ja compilou e CONFERIU o artefato num job anterior,
+     * reconstruir aqui publica uma imagem com bytes diferentes dos que foram verificados.
+     *
+     * <p>Tambem pode vir de {@code -Pvulcanforge.skipBuild=true} ou de
+     * {@code VULCANFORGE_SKIP_BUILD=true}, nesta ordem de precedencia (DSL, propriedade,
+     * ambiente).
+     *
+     * <p>⚠️ <b>O que ele substitui:</b> antes da 1.2.0 a unica forma de nao reconstruir era
+     * {@code ./gradlew dockerPublish -x build -x clean}. Funciona, e tem uma armadilha —
+     * esquecer o {@code -x clean} faz o {@code clean} APAGAR o artefato antes do
+     * {@code docker build}, e a falha aparece como um {@code COPY} sem arquivo, sem relacao
+     * aparente com a causa.
+     */
+    public Boolean getSkipBuild() {
+        return skipBuild;
+    }
+
+    public void setSkipBuild(Boolean skipBuild) {
+        this.skipBuild = skipBuild;
     }
 }

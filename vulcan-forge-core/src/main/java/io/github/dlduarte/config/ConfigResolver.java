@@ -31,6 +31,13 @@ public class ConfigResolver {
     public static final String KEY_DOCKERFILE_PATH = "dockerfilePath";
     public static final String KEY_REMOVE_LOCAL_IMAGE = "removeLocalImage";
 
+    /**
+     * Nao roda o build previo do artefato antes de construir a imagem. No Maven e um
+     * parametro do mojo ({@code -Dvulcanforge.skipBuild}); no Gradle decide se a task
+     * {@code dockerPublish} declara {@code dependsOn(build)}.
+     */
+    public static final String KEY_SKIP_BUILD = "skipBuild";
+
     // Subchaves por target: vulcanforge.<target>.<sub>
     public static final String SUB_DOCKER_REGISTRY = "dockerRegistry";
     public static final String SUB_MAVEN_URL = "mavenUrl";
@@ -91,6 +98,24 @@ public class ConfigResolver {
                 .serverId(get(global, tp + SUB_SERVER_ID))
                 .removeLocalImage(removeLocalImage == null || Boolean.parseBoolean(removeLocalImage))
                 .build();
+    }
+
+    /**
+     * Todas as chaves de configuracao que fazem sentido para um dado target, sem o prefixo
+     * {@code vulcanforge.}.
+     *
+     * <p>Existe para quem precisa VARRER as chaves em vez de perguntar por uma —
+     * tipicamente para descobrir quais tem valor no ambiente. Como as chaves por target sao
+     * montadas ({@code <target>.dockerRegistry}), ela e a unica lista completa; espalhar
+     * essa montagem por quem le seria a mesma regra em dois lugares.
+     */
+    public static java.util.List<String> configKeys(RegistryTarget target) {
+        String tp = target.configKey() + ".";
+        return java.util.List.of(
+                KEY_TARGET, KEY_NAMESPACE, KEY_IMAGE_NAME, KEY_TAG,
+                KEY_DOCKERFILE_PATH, KEY_REMOVE_LOCAL_IMAGE, KEY_SKIP_BUILD,
+                tp + SUB_DOCKER_REGISTRY, tp + SUB_MAVEN_URL,
+                tp + SUB_NAMESPACE, tp + SUB_SERVER_ID);
     }
 
     private static String firstNonBlank(String... values) {

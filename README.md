@@ -91,7 +91,7 @@ Requisitos: **Java 17+**, **Docker** instalado e no `PATH` (para publicar imagen
 ## Instalação
 
 Os artefatos são publicados no **Maven Central**, então basta referenciá-los — não é
-preciso compilar o plugin. Coordenadas (versão `1.1.0`):
+preciso compilar o plugin. Coordenadas (versão `1.2.0`):
 
 - `io.github.dlduarte:vulcan-forge-maven-plugin` (plugin Maven)
 - `io.github.dlduarte:vulcan-forge-gradle-plugin` (plugin Gradle, id `io.github.dlduarte.publish`)
@@ -158,6 +158,36 @@ vulcanforge.nexus-docker.username=USUARIO
 vulcanforge.nexus-docker.password=SENHA
 ```
 
+### Variáveis de ambiente (1.2.0+)
+
+Toda chave acima também pode vir do **ambiente**, com o prefixo `VULCANFORGE_`, ponto
+virando `_` e camelCase virando `SNAKE_CASE`:
+
+| Propriedade | Variável |
+|---|---|
+| `vulcanforge.target` | `VULCANFORGE_TARGET` |
+| `vulcanforge.dockerfilePath` | `VULCANFORGE_DOCKERFILE_PATH` |
+| `vulcanforge.nexus.dockerRegistry` | `VULCANFORGE_NEXUS_DOCKER_REGISTRY` |
+| `vulcanforge.nexus.serverId` | `VULCANFORGE_NEXUS_SERVER_ID` |
+| `vulcanforge.nexus-docker.username` | `VULCANFORGE_NEXUS_DOCKER_USERNAME` |
+| `vulcanforge.nexus-docker.password` | `VULCANFORGE_NEXUS_DOCKER_PASSWORD` |
+
+**A propriedade vence o ambiente.** A propriedade é a configuração explícita — de quem
+escreveu o `gradle.properties` ou passou um `-P`; a variável é o ambiente, que muda sem
+ninguém editar nada. A ordem inversa deixaria uma variável exportada num shell esquecido
+mandar no build de quem configurou o oposto, sem nada no log dizendo isso.
+
+> **Isto existe para o CI.** Sem ele, um pipeline só tem dois caminhos para entregar a
+> senha ao plugin Gradle: escrevê-la em disco num `gradle.properties` montado pelo job, ou
+> passá-la em `-Pvulcanforge.<serverId>.password=...`, onde ela aparece em `ps` e em
+> qualquer log que ecoe o comando. No Maven o problema não existe porque o `settings.xml`
+> interpola `${env.NEXUS_USER}` sozinho; no Gradle não há equivalente, e nomes de
+> propriedade com ponto não podem ser expressos pelo `ORG_GRADLE_PROJECT_<nome>` do próprio
+> Gradle — shell nenhum aceita ponto em nome de variável.
+
+As duas metades da credencial são resolvidas **independentemente**: dá para ter o usuário
+numa propriedade e a senha no ambiente.
+
 ## Publicar imagem Docker
 
 O Docker é **independente** do deploy Maven. O próprio goal já faz **clean + install**
@@ -173,6 +203,28 @@ Parâmetros úteis do build prévio (Maven): `-Dvulcanforge.skipTests=true` (pul
 `-Dvulcanforge.buildGoals="clean package"` (troca os goals), `-Dvulcanforge.skipBuild=true`
 (usa o `target/` atual, sem rebuildar).
 
+### `skipBuild` no Gradle (1.2.0+)
+
+O equivalente do `-Dvulcanforge.skipBuild` do Maven. Com ele, `dockerPublish` **deixa de
+declarar** `dependsOn(build)` e `dependsOn(clean)`, e a imagem sai do que já estiver em
+`build/libs`:
+
+```bash
+./gradlew dockerPublish -Pvulcanforge.skipBuild=true
+```
+
+Também vale pelo DSL (`vulcanForge { skipBuild = true }`) ou por
+`VULCANFORGE_SKIP_BUILD=true` — nesta ordem de precedência: DSL, propriedade, ambiente.
+
+> **Por que ele existe.** Num pipeline que já compilou e **conferiu** o artefato num job
+> anterior, reconstruir aqui publica uma imagem com bytes diferentes dos que foram
+> verificados.
+>
+> Antes da 1.2.0 o jeito de conseguir isso era `./gradlew dockerPublish -x build -x clean`.
+> Funciona, e tem uma armadilha: esquecer o `-x clean` faz o `clean` **apagar** o artefato
+> antes do `docker build`, e a falha aparece como um `COPY` sem arquivo — sem relação
+> aparente com a causa.
+
 **Maven** — declare o plugin no `pom.xml` e escolha o servidor no `<configuration><target>`
 (valores: `nexus` | `github`; aliases `ghp`, `github-packages`, `ghcr`). O `<executions>`
 serve só para a IDE reconhecer os parâmetros (ver nota abaixo); como o goal não tem fase
@@ -182,7 +234,7 @@ padrão, **não roda num build normal**:
 <plugin>
   <groupId>io.github.dlduarte</groupId>
   <artifactId>vulcan-forge-maven-plugin</artifactId>
-  <version>1.1.0</version>
+  <version>1.2.0</version>
   <configuration>
     <enabledGoals>
       <goal>docker-publish</goal>
@@ -219,7 +271,7 @@ mvn vulcan-forge:docker-publish   # ja faz clean + install + docker (um so coman
 >     <plugin>
 >       <groupId>io.github.dlduarte</groupId>
 >       <artifactId>vulcan-forge-maven-plugin</artifactId>
->       <version>1.1.0</version>
+>       <version>1.2.0</version>
 >     </plugin>
 >   </plugins></build>
 > </project>
@@ -235,7 +287,7 @@ o Docker não estiver disponível. Após o push, a imagem local é removida
 ```groovy
 buildscript {
     repositories { mavenCentral() }   // use mavenLocal() se estiver testando um build local
-    dependencies { classpath 'io.github.dlduarte:vulcan-forge-gradle-plugin:1.1.0' }
+    dependencies { classpath 'io.github.dlduarte:vulcan-forge-gradle-plugin:1.2.0' }
 }
 plugins { id 'java' }
 apply plugin: 'io.github.dlduarte.publish'

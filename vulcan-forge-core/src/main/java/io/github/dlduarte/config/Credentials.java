@@ -1,6 +1,9 @@
 package io.github.dlduarte.config;
 
-/** Par usuario/senha resolvido a partir do settings.xml (Maven) ou gradle.properties (Gradle). */
+/**
+ * Par usuario/senha resolvido a partir do settings.xml (Maven), do gradle.properties ou do
+ * ambiente (Gradle, desde a 1.2.0 -- ver {@link EnvConfigSource}).
+ */
 public final class Credentials {
 
     private final String username;

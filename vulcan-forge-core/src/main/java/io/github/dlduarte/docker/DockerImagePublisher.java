@@ -3,6 +3,7 @@ package io.github.dlduarte.docker;
 import io.github.dlduarte.ForgeException;
 import io.github.dlduarte.ForgeLogger;
 import io.github.dlduarte.config.Credentials;
+import io.github.dlduarte.config.EnvConfigSource;
 import io.github.dlduarte.config.VulcanForgeConfig;
 import io.github.dlduarte.process.ProcessRunner;
 
@@ -167,7 +168,9 @@ public class DockerImagePublisher {
         }
         if (cfg.getDockerRegistry() == null || cfg.getDockerRegistry().isBlank()) {
             throw new ForgeException("Registry Docker nao configurado para o target '" + targetKey
-                    + "'. Defina 'vulcanforge." + targetKey + ".dockerRegistry' no settings.xml/gradle.properties.");
+                    + "'. Defina 'vulcanforge." + targetKey + ".dockerRegistry' no settings.xml"
+                    + " (Maven) ou no gradle.properties, ou exporte "
+                    + EnvConfigSource.envName(targetKey + ".dockerRegistry") + ".");
         }
         if (projectDir == null || !projectDir.isDirectory()) {
             throw new ForgeException("Diretorio do projeto invalido: " + projectDir);
@@ -181,8 +184,10 @@ public class DockerImagePublisher {
                     + "'; o push sera feito sem 'docker login'.");
         } else if (creds == null || !creds.isComplete()) {
             throw new ForgeException("Credenciais ausentes/incompletas para o serverId '"
-                    + cfg.getServerId() + "'. Configure usuario e senha no settings.xml (<server>) "
-                    + "ou no gradle.properties (vulcanforge." + cfg.getServerId() + ".username/password).");
+                    + cfg.getServerId() + "'. Configure usuario e senha no settings.xml (<server>), "
+                    + "no gradle.properties (vulcanforge." + cfg.getServerId() + ".username/password) "
+                    + "ou no ambiente (" + EnvConfigSource.envName(cfg.getServerId() + ".username")
+                    + "/" + EnvConfigSource.envName(cfg.getServerId() + ".password") + ").");
         }
     }
 }

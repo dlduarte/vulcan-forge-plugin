@@ -1,6 +1,8 @@
 package io.github.dlduarte.gradle;
 
 import io.github.dlduarte.config.ConfigResolver;
+import io.github.dlduarte.config.EnvConfigSource;
+import io.github.dlduarte.config.RegistryTarget;
 import io.github.dlduarte.config.VulcanForgeConfig;
 import org.gradle.api.Project;
 
@@ -8,10 +10,16 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Monta a {@link VulcanForgeConfig} do Gradle. Toda a configuracao e global
- * (propriedades {@code vulcanforge.*}, tipicamente em {@code ~/.gradle/gradle.properties},
- * o equivalente ao {@code settings.xml} do Maven). O projeto so pode escolher o target
- * via DSL {@code vulcanForge { target = ... }}.
+ * Monta a {@link VulcanForgeConfig} do Gradle.
+ *
+ * <p>As coordenadas do servidor sao globais — propriedades {@code vulcanforge.*}, tipicamente
+ * em {@code ~/.gradle/gradle.properties}, o equivalente ao {@code settings.xml} do Maven — e
+ * o projeto sobrescreve apenas a identidade do artefato pela DSL {@code vulcanForge { ... }}.
+ *
+ * <p><b>Desde a 1.2.0 o ambiente tambem e uma fonte</b>, atras das propriedades: o que estiver
+ * em {@code VULCANFORGE_*} preenche o que nao foi declarado. E o que permite um pipeline
+ * configurar o plugin sem escrever nada em disco nem passar valor pela linha de comando. A
+ * regra de nome e a precedencia estao em {@link EnvConfigSource}.
  */
 final class GradleConfigReader {
 
@@ -19,6 +27,11 @@ final class GradleConfigReader {
     }
 
     static VulcanForgeConfig resolve(Project project, VulcanForgeExtension ext) {
+        return resolve(project, ext, new EnvConfigSource());
+    }
+
+    /** Sobrecarga com o ambiente injetado — e o que torna esta classe testavel. */
+    static VulcanForgeConfig resolve(Project project, VulcanForgeExtension ext, EnvConfigSource env) {
         Map<String, String> global = new HashMap<>();
         for (Map.Entry<String, ?> entry : project.getProperties().entrySet()) {
             String name = entry.getKey();
@@ -41,14 +54,45 @@ final class GradleConfigReader {
                     String.valueOf(ext.getRemoveLocalImage()));
         }
 
+        // As chaves POR TARGET (`<target>.dockerRegistry`, ...) so podem ser procuradas no
+        // ambiente depois de se saber qual e o target -- e ele proprio pode vir de la.
+        global = env.mergeInto(global,
+                ConfigResolver.configKeys(targetOf(projectOverrides, global, env)));
+
         Map<String, String> defaults = new HashMap<>();
         defaults.put(ConfigResolver.KEY_IMAGE_NAME, project.getName());
         String version = String.valueOf(project.getVersion());
-        if (version != null && !version.isBlank() && !"unspecified".equals(version)) {
+        if (!version.isBlank() && !"unspecified".equals(version)) {
             defaults.put(ConfigResolver.KEY_TAG, version);
         }
 
         return new ConfigResolver().resolve(projectOverrides, global, defaults);
+    }
+
+    /**
+     * O target, na mesma ordem que o {@link ConfigResolver} usa — projeto, global, e agora
+     * tambem o ambiente. Um valor invalido NAO explode aqui: ele cai em {@code nexus} so para
+     * montar a lista de chaves a procurar no ambiente, e quem reclama e o
+     * {@code ConfigResolver.resolve()}, com a mensagem dele. Explodir aqui trocaria um erro
+     * que diz "target invalido" por um erro de dentro do leitor de configuracao.
+     */
+    private static RegistryTarget targetOf(Map<String, String> project, Map<String, String> global,
+                                           EnvConfigSource env) {
+        String value = project.get(ConfigResolver.KEY_TARGET);
+        if (value == null || value.isBlank()) {
+            value = global.get(ConfigResolver.KEY_TARGET);
+        }
+        if (value == null || value.isBlank()) {
+            value = env.get(ConfigResolver.KEY_TARGET);
+        }
+        try {
+            // `from` devolve null quando nao ha valor -- o default `nexus` e aplicado pelo
+            // ConfigResolver, e aqui ele precisa ser aplicado de novo para montar a lista.
+            RegistryTarget target = RegistryTarget.from(value);
+            return target == null ? RegistryTarget.NEXUS : target;
+        } catch (RuntimeException e) {
+            return RegistryTarget.NEXUS;
+        }
     }
 
     private static void put(Map<String, String> map, String key, String value) {
