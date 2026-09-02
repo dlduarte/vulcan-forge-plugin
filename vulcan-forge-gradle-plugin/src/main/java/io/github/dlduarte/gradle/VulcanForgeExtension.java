@@ -27,6 +27,8 @@ public class VulcanForgeExtension {
     private String tag;
     private String dockerfilePath;
     private Boolean removeLocalImage;
+    private java.util.Map<String, String> labels;
+    private Boolean ociLabels;
     private Boolean skipBuild;
 
     /**
@@ -80,6 +82,41 @@ public class VulcanForgeExtension {
 
     public void setDockerfilePath(String dockerfilePath) {
         this.dockerfilePath = dockerfilePath;
+    }
+
+    /**
+     * Rotulos a gravar na imagem.
+     *
+     * <pre>{@code
+     * vulcanForge {
+     *     labels = ["time": "pagamentos", "tier": "api"]
+     * }
+     * }</pre>
+     *
+     * <p>Vencem os automaticos da OCI e os que vierem por {@code vulcanforge.labels}.
+     */
+    public java.util.Map<String, String> getLabels() {
+        return labels;
+    }
+
+    public void setLabels(java.util.Map<String, String> labels) {
+        this.labels = labels;
+    }
+
+    /**
+     * Escreve os rotulos padrao da OCI (version, revision, created, source). Padrao:
+     * {@code true}.
+     *
+     * <p>⚠️ Desligar isto tira da imagem a resposta para "de qual commit ela saiu" — e essa
+     * resposta nao existe em nenhum outro lugar depois que o pipeline termina. Uma esteira
+     * que promova imagem em vez de reconstrui-la depende dela.
+     */
+    public Boolean getOciLabels() {
+        return ociLabels;
+    }
+
+    public void setOciLabels(Boolean ociLabels) {
+        this.ociLabels = ociLabels;
     }
 
     public Boolean getRemoveLocalImage() {

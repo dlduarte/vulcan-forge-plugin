@@ -53,6 +53,9 @@ final class GradleConfigReader {
             projectOverrides.put(ConfigResolver.KEY_REMOVE_LOCAL_IMAGE,
                     String.valueOf(ext.getRemoveLocalImage()));
         }
+        if (ext.getOciLabels() != null) {
+            projectOverrides.put(ConfigResolver.KEY_OCI_LABELS, String.valueOf(ext.getOciLabels()));
+        }
 
         // As chaves POR TARGET (`<target>.dockerRegistry`, ...) so podem ser procuradas no
         // ambiente depois de se saber qual e o target -- e ele proprio pode vir de la.
@@ -66,7 +69,7 @@ final class GradleConfigReader {
             defaults.put(ConfigResolver.KEY_TAG, version);
         }
 
-        return new ConfigResolver().resolve(projectOverrides, global, defaults);
+        return new ConfigResolver().resolve(projectOverrides, global, defaults, ext.getLabels());
     }
 
     /**

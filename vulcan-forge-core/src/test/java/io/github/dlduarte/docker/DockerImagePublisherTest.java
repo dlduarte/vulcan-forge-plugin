@@ -17,6 +17,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -177,5 +178,56 @@ class DockerImagePublisherTest {
                 .build();
 
         assertEquals("ghcr.io/owner/app:2.0", DockerImagePublisher.buildRemoteRef(cfg));
+    }
+
+    // -------------------------------------------------------------------------
+    // Rotulos
+    // -------------------------------------------------------------------------
+
+    @Test
+    void rotulosEntramNoBuildEOContextoContinuaPorUltimo(@TempDir Path projectDir) throws IOException {
+        Files.writeString(projectDir.resolve("Dockerfile"), "FROM scratch\n");
+        VulcanForgeConfig cfg = VulcanForgeConfig.builder()
+                .target(RegistryTarget.NEXUS)
+                .dockerRegistry("nexus.example.com:8083")
+                .imageName("meu-app").tag("1.0.0").dockerfilePath("Dockerfile")
+                .labels(java.util.Map.of("time", "pagamentos"))
+                .build();
+        RecordingRunner runner = new RecordingRunner();
+        new DockerImagePublisher(runner, ForgeLogger.CONSOLE).publish(cfg, null, projectDir.toFile());
+
+        List<String> build = runner.commands.get(0);
+
+        // O par vem como DOIS argumentos, e nao como uma string montada: sem shell no meio,
+        // um valor com espaco continua sendo um valor so.
+        int i = build.indexOf("--label");
+        assertTrue(i > 0, "nenhum --label no build: " + build);
+        assertTrue(build.contains("time=pagamentos"), "rotulo explicito ausente: " + build);
+
+        // O automatico da OCI convive com o explicito.
+        assertTrue(build.contains("org.opencontainers.image.version=1.0.0"),
+                "rotulo automatico ausente: " + build);
+
+        // ⚠️ O CONTEXTO TEM QUE SER O ULTIMO. Se um --label for acrescentado depois dele, o
+        // docker interpreta o caminho como valor de flag e o build falha com uma mensagem
+        // sobre argumento faltando -- que nao aponta para a causa.
+        assertEquals(projectDir.toFile().getAbsolutePath(), build.get(build.size() - 1));
+    }
+
+    @Test
+    void semRotulosOBuildNaoGanhaFlagNenhuma(@TempDir Path projectDir) throws IOException {
+        Files.writeString(projectDir.resolve("Dockerfile"), "FROM scratch\n");
+        VulcanForgeConfig cfg = VulcanForgeConfig.builder()
+                .target(RegistryTarget.NEXUS)
+                .dockerRegistry("nexus.example.com:8083")
+                .imageName("meu-app").tag("1.0.0").dockerfilePath("Dockerfile")
+                .ociLabels(false)
+                .build();
+        RecordingRunner runner = new RecordingRunner();
+        new DockerImagePublisher(runner, ForgeLogger.CONSOLE).publish(cfg, null, projectDir.toFile());
+
+        List<String> build = runner.commands.get(0);
+        assertFalse(build.contains("--label"), "nao deveria haver rotulo: " + build);
+        assertEquals(6, build.size(), "build -f <df> -t <ref> <contexto>: " + build);
     }
 }
