@@ -1,5 +1,9 @@
 package io.github.dlduarte.config;
 
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.Map;
+
 /**
  * Configuracao resolvida (imutavel) para um target especifico, apos aplicar a config
  * global e os defaults do projeto. Produzida por {@link ConfigResolver}.
@@ -15,6 +19,8 @@ public final class VulcanForgeConfig {
     private final String dockerfilePath;
     private final String serverId;
     private final boolean removeLocalImage;
+    private final Map<String, String> labels;
+    private final boolean ociLabels;
 
     private VulcanForgeConfig(Builder b) {
         this.target = b.target;
@@ -26,6 +32,8 @@ public final class VulcanForgeConfig {
         this.dockerfilePath = b.dockerfilePath;
         this.serverId = b.serverId;
         this.removeLocalImage = b.removeLocalImage;
+        this.labels = Collections.unmodifiableMap(new LinkedHashMap<>(b.labels));
+        this.ociLabels = b.ociLabels;
     }
 
     public RegistryTarget getTarget() {
@@ -68,6 +76,28 @@ public final class VulcanForgeConfig {
         return removeLocalImage;
     }
 
+    /**
+     * Rotulos explicitos, na ordem de declaracao. Nunca {@code null}.
+     *
+     * <p>Eles VENCEM os automaticos da OCI: quem configurou um valor a mao disse o que queria.
+     */
+    public Map<String, String> getLabels() {
+        return labels;
+    }
+
+    /**
+     * Escreve os rotulos padrao da OCI (version, revision, created, source). Padrao:
+     * {@code true}.
+     *
+     * <p>Ligado por padrao de proposito. Configuracao que precisa ser lembrada e configuracao
+     * que sera esquecida em algum projeto — e o projeto que a esquecer so descobre quando
+     * alguem precisar da resposta que a imagem nao tem. Ver
+     * {@link io.github.dlduarte.docker.ImageLabels}.
+     */
+    public boolean isOciLabels() {
+        return ociLabels;
+    }
+
     public static Builder builder() {
         return new Builder();
     }
@@ -84,6 +114,8 @@ public final class VulcanForgeConfig {
                 + ", dockerfilePath='" + dockerfilePath + '\''
                 + ", serverId='" + serverId + '\''
                 + ", removeLocalImage=" + removeLocalImage
+                + ", labels=" + labels
+                + ", ociLabels=" + ociLabels
                 + '}';
     }
 
@@ -97,6 +129,8 @@ public final class VulcanForgeConfig {
         private String dockerfilePath;
         private String serverId;
         private boolean removeLocalImage = true;
+        private Map<String, String> labels = new LinkedHashMap<>();
+        private boolean ociLabels = true;
 
         public Builder target(RegistryTarget v) {
             this.target = v;
@@ -140,6 +174,16 @@ public final class VulcanForgeConfig {
 
         public Builder removeLocalImage(boolean v) {
             this.removeLocalImage = v;
+            return this;
+        }
+
+        public Builder labels(Map<String, String> v) {
+            this.labels = v == null ? new LinkedHashMap<>() : new LinkedHashMap<>(v);
+            return this;
+        }
+
+        public Builder ociLabels(boolean v) {
+            this.ociLabels = v;
             return this;
         }
 

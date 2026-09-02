@@ -91,7 +91,7 @@ Requisitos: **Java 17+**, **Docker** instalado e no `PATH` (para publicar imagen
 ## Instalação
 
 Os artefatos são publicados no **Maven Central**, então basta referenciá-los — não é
-preciso compilar o plugin. Coordenadas (versão `1.2.0`):
+preciso compilar o plugin. Coordenadas (versão `1.3.0`):
 
 - `io.github.dlduarte:vulcan-forge-maven-plugin` (plugin Maven)
 - `io.github.dlduarte:vulcan-forge-gradle-plugin` (plugin Gradle, id `io.github.dlduarte.publish`)
@@ -157,6 +157,95 @@ vulcanforge.nexus.serverId=nexus-docker
 vulcanforge.nexus-docker.username=USUARIO
 vulcanforge.nexus-docker.password=SENHA
 ```
+
+### Rótulos da imagem (1.3.0+)
+
+Toda imagem publicada recebe os rótulos padrão da
+[OCI](https://github.com/opencontainers/image-spec), **sem configuração nenhuma**:
+
+| Rótulo | De onde vem |
+|---|---|
+| `org.opencontainers.image.version` | a `tag` da imagem |
+| `org.opencontainers.image.revision` | o commit, do ambiente de CI |
+| `org.opencontainers.image.created` | o instante do build, em UTC |
+| `org.opencontainers.image.source` | a URL do repositório, do ambiente de CI |
+
+**Por que isso importa.** Uma imagem sem rótulo não sabe dizer de qual commit ela saiu.
+Enquanto ela está no pipeline que a construiu, a resposta está no ambiente do job; depois
+que o pipeline acaba, ela desaparece — e o `git log` não ajuda, porque ele não sabe qual
+commit virou imagem.
+
+Isso deixa de ser detalhe quando uma esteira **promove** imagem em vez de reconstruí-la:
+para saber de onde cortar a branch de release, ou para conferir que o código promovido é o
+código empacotado, alguém precisa perguntar à própria imagem.
+
+```bash
+docker inspect --format '{{json .Config.Labels}}' minha-imagem:1.3.0
+```
+
+#### O commit
+
+É procurado no ambiente, nesta ordem:
+
+```
+VULCANFORGE_REVISION    explícito — vence os demais
+CI_COMMIT_SHA           GitLab CI
+GITHUB_SHA              GitHub Actions
+BUILD_VCS_NUMBER        TeamCity
+GIT_COMMIT              Jenkins (git plugin)
+```
+
+Fora de um CI conhecido ele fica sem valor. **A imagem é publicada assim mesmo** — o
+plugin também roda na máquina de quem desenvolve, e falhar ali transformaria um metadado
+em obstáculo. Mas o log **avisa**, dizendo o que foi procurado.
+
+Para carimbar um build local:
+
+```bash
+VULCANFORGE_REVISION=$(git rev-parse HEAD) mvn io.github.dlduarte:vulcan-forge-maven-plugin:docker-publish
+```
+
+> ⚠️ **Quem depende do rótulo deve conferir que ele chegou, e não supor.** Uma imagem
+> construída por uma versão anterior do plugin não o tem, e a ausência é silenciosa — ela
+> só aparece no dia em que alguém precisar da resposta.
+
+#### Rótulos próprios
+
+Somam-se aos automáticos e, na mesma chave, **vencem**:
+
+```xml
+<configuration>
+  <labels>
+    <time>pagamentos</time>
+    <tier>api</tier>
+  </labels>
+</configuration>
+```
+
+```groovy
+vulcanForge {
+    labels = ['time': 'pagamentos', 'tier': 'api']
+}
+```
+
+Pela linha de comando ou pelo ambiente, na forma `chave=valor` separada por vírgula:
+
+```bash
+mvn ... -Dvulcanforge.labels='time=pagamentos,tier=api'
+export VULCANFORGE_LABELS='time=pagamentos,tier=api'
+```
+
+Um par sem `=` é **erro**, e não é ignorado: ignorá-lo produziria uma imagem sem o rótulo
+que alguém acha que configurou.
+
+#### Desligar os automáticos
+
+```bash
+-Dvulcanforge.ociLabels=false
+```
+
+Ligados por padrão de propósito: configuração que precisa ser lembrada é configuração que
+será esquecida em algum projeto — e o projeto que a esquecer só descobre meses depois.
 
 ### Variáveis de ambiente (1.2.0+)
 
@@ -234,7 +323,7 @@ padrão, **não roda num build normal**:
 <plugin>
   <groupId>io.github.dlduarte</groupId>
   <artifactId>vulcan-forge-maven-plugin</artifactId>
-  <version>1.2.0</version>
+  <version>1.3.0</version>
   <configuration>
     <enabledGoals>
       <goal>docker-publish</goal>
@@ -271,7 +360,7 @@ mvn vulcan-forge:docker-publish   # ja faz clean + install + docker (um so coman
 >     <plugin>
 >       <groupId>io.github.dlduarte</groupId>
 >       <artifactId>vulcan-forge-maven-plugin</artifactId>
->       <version>1.2.0</version>
+>       <version>1.3.0</version>
 >     </plugin>
 >   </plugins></build>
 > </project>
@@ -287,7 +376,7 @@ o Docker não estiver disponível. Após o push, a imagem local é removida
 ```groovy
 buildscript {
     repositories { mavenCentral() }   // use mavenLocal() se estiver testando um build local
-    dependencies { classpath 'io.github.dlduarte:vulcan-forge-gradle-plugin:1.2.0' }
+    dependencies { classpath 'io.github.dlduarte:vulcan-forge-gradle-plugin:1.3.0' }
 }
 plugins { id 'java' }
 apply plugin: 'io.github.dlduarte.publish'

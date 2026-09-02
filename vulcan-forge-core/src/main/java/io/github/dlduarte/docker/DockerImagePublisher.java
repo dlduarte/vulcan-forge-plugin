@@ -17,7 +17,7 @@ import java.util.List;
  * Orquestra a publicacao de uma imagem Docker seguindo os passos:
  *
  * <ol>
- *   <li>{@code docker build -f <dockerfile> -t <imageName>:<tag> <contexto>}</li>
+ *   <li>{@code docker build -f <dockerfile> -t <imageName>:<tag> [--label k=v ...] <contexto>}</li>
  *   <li>{@code docker tag <imageName>:<tag> <ref remota>}</li>
  *   <li>{@code docker login <registry> -u <user> --password-stdin} (se ha credenciais)</li>
  *   <li>{@code docker push <ref remota>}</li>
@@ -53,10 +53,24 @@ public class DockerImagePublisher {
         log.info("Publicando imagem Docker: " + localRef + " -> " + remoteRef);
 
         // 1. build
-        runner.exec(List.of("build",
-                "-f", dockerfile.getAbsolutePath(),
-                "-t", localRef,
-                projectDir.getAbsolutePath()), projectDir, null);
+        //
+        // Os rotulos entram AQUI, e nao num segundo build por cima da imagem pronta: assim
+        // eles fazem parte da unica imagem que existe, e nao ha janela entre publicar e
+        // carimbar. Ver ImageLabels para o que e escrito sem configuracao, e por que.
+        List<String> buildArgs = new ArrayList<>();
+        buildArgs.add("build");
+        buildArgs.add("-f");
+        buildArgs.add(dockerfile.getAbsolutePath());
+        buildArgs.add("-t");
+        buildArgs.add(localRef);
+        for (var e : ImageLabels.resolve(cfg, System.getenv(), log).entrySet()) {
+            // Um argumento por rotulo, e nao uma string montada: o ProcessRunner recebe uma
+            // lista, entao nao ha shell para reinterpretar espaco ou aspas no valor.
+            buildArgs.add("--label");
+            buildArgs.add(e.getKey() + "=" + e.getValue());
+        }
+        buildArgs.add(projectDir.getAbsolutePath());
+        runner.exec(buildArgs, projectDir, null);
 
         // 2. tag
         runner.exec(List.of("tag", localRef, remoteRef), projectDir, null);

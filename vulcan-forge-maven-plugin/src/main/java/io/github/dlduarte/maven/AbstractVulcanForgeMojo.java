@@ -84,6 +84,32 @@ public abstract class AbstractVulcanForgeMojo extends AbstractMojo {
     @Parameter(property = "vulcanforge.removeLocalImage")
     protected Boolean removeLocalImage;
 
+    /**
+     * Rotulos a gravar na imagem, na forma de mapa.
+     *
+     * <pre>{@code
+     * <labels>
+     *   <time>pagamentos</time>
+     *   <tier>api</tier>
+     * </labels>
+     * }</pre>
+     *
+     * <p>Vencem os automaticos da OCI e os que vierem por {@code -Dvulcanforge.labels}.
+     */
+    @Parameter
+    private java.util.Map<String, String> labels;
+
+    /**
+     * Escreve os rotulos padrao da OCI (version, revision, created, source). Padrao:
+     * {@code true}.
+     *
+     * <p>⚠️ Desligar isto tira da imagem a resposta para "de qual commit ela saiu" — e essa
+     * resposta nao existe em nenhum outro lugar depois que o pipeline termina. Uma esteira
+     * que promova imagem em vez de reconstrui-la depende dela.
+     */
+    @Parameter(property = "vulcanforge.ociLabels")
+    private Boolean ociLabels;
+
     @Parameter(property = "vulcanforge.skip", defaultValue = "false")
     protected boolean skip;
 
@@ -107,6 +133,9 @@ public abstract class AbstractVulcanForgeMojo extends AbstractMojo {
         put(projectOverrides, ConfigResolver.KEY_IMAGE_NAME, imageName);
         put(projectOverrides, ConfigResolver.KEY_TAG, tag);
         put(projectOverrides, ConfigResolver.KEY_DOCKERFILE_PATH, dockerfilePath);
+        if (ociLabels != null) {
+            projectOverrides.put(ConfigResolver.KEY_OCI_LABELS, String.valueOf(ociLabels));
+        }
         if (removeLocalImage != null) {
             projectOverrides.put(ConfigResolver.KEY_REMOVE_LOCAL_IMAGE, String.valueOf(removeLocalImage));
         }
@@ -119,7 +148,7 @@ public abstract class AbstractVulcanForgeMojo extends AbstractMojo {
             defaults.put(ConfigResolver.KEY_TAG, project.getVersion());
         }
 
-        return new ConfigResolver().resolve(projectOverrides, global, defaults);
+        return new ConfigResolver().resolve(projectOverrides, global, defaults, labels);
     }
 
     private static void put(Map<String, String> map, String key, String value) {

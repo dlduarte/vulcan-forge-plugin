@@ -1,5 +1,8 @@
 package io.github.dlduarte.config;
 
+import io.github.dlduarte.docker.ImageLabels;
+
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
@@ -32,6 +35,21 @@ public class ConfigResolver {
     public static final String KEY_REMOVE_LOCAL_IMAGE = "removeLocalImage";
 
     /**
+     * Rotulos a gravar na imagem, na forma {@code chave=valor,chave2=valor2}.
+     *
+     * <p>E a forma de STRING, para quem configura por {@code -D}, {@code gradle.properties} ou
+     * variavel de ambiente. No POM e no {@code build.gradle} existe a forma de mapa, que nao
+     * tem a limitacao de nao poder conter o separador.
+     */
+    public static final String KEY_LABELS = "labels";
+
+    /**
+     * Escreve os rotulos padrao da OCI. Padrao: {@code true}. Ver
+     * {@link io.github.dlduarte.docker.ImageLabels}.
+     */
+    public static final String KEY_OCI_LABELS = "ociLabels";
+
+    /**
      * Nao roda o build previo do artefato antes de construir a imagem. No Maven e um
      * parametro do mojo ({@code -Dvulcanforge.skipBuild}); no Gradle decide se a task
      * {@code dockerPublish} declara {@code dependsOn(build)}.
@@ -53,6 +71,19 @@ public class ConfigResolver {
     public VulcanForgeConfig resolve(Map<String, String> project,
                                      Map<String, String> global,
                                      Map<String, String> defaults) {
+        return resolve(project, global, defaults, null);
+    }
+
+    /**
+     * @param projectLabels rotulos na forma de MAPA, vindos do POM ou do {@code build.gradle}.
+     *                      Vencem os que chegarem pela chave de string {@code labels}, porque
+     *                      sao a configuracao mais especifica que existe: escrita naquele
+     *                      projeto, naquele arquivo.
+     */
+    public VulcanForgeConfig resolve(Map<String, String> project,
+                                     Map<String, String> global,
+                                     Map<String, String> defaults,
+                                     Map<String, String> projectLabels) {
         String targetValue = firstNonBlank(
                 get(project, KEY_TARGET),
                 get(global, KEY_TARGET),
@@ -87,6 +118,20 @@ public class ConfigResolver {
         String removeLocalImage = firstNonBlank(
                 get(project, KEY_REMOVE_LOCAL_IMAGE), get(global, KEY_REMOVE_LOCAL_IMAGE));
 
+        // ociLabels: projeto > global > default true
+        String ociLabels = firstNonBlank(
+                get(project, KEY_OCI_LABELS), get(global, KEY_OCI_LABELS));
+
+        // Rotulos: acumulam, do mais generico para o mais especifico. Nao substituem --
+        // um rotulo de organizacao no global e um de time no projeto convivem, e so
+        // colidem se usarem a MESMA chave, caso em que o mais especifico vence.
+        Map<String, String> labels = new LinkedHashMap<>();
+        labels.putAll(ImageLabels.parse(get(global, KEY_LABELS)));
+        labels.putAll(ImageLabels.parse(get(project, KEY_LABELS)));
+        if (projectLabels != null) {
+            labels.putAll(projectLabels);
+        }
+
         return VulcanForgeConfig.builder()
                 .target(target)
                 .dockerRegistry(dockerRegistry)
@@ -97,6 +142,8 @@ public class ConfigResolver {
                 .dockerfilePath(dockerfilePath)
                 .serverId(get(global, tp + SUB_SERVER_ID))
                 .removeLocalImage(removeLocalImage == null || Boolean.parseBoolean(removeLocalImage))
+                .labels(labels)
+                .ociLabels(ociLabels == null || Boolean.parseBoolean(ociLabels))
                 .build();
     }
 
@@ -114,6 +161,7 @@ public class ConfigResolver {
         return java.util.List.of(
                 KEY_TARGET, KEY_NAMESPACE, KEY_IMAGE_NAME, KEY_TAG,
                 KEY_DOCKERFILE_PATH, KEY_REMOVE_LOCAL_IMAGE, KEY_SKIP_BUILD,
+                KEY_LABELS, KEY_OCI_LABELS,
                 tp + SUB_DOCKER_REGISTRY, tp + SUB_MAVEN_URL,
                 tp + SUB_NAMESPACE, tp + SUB_SERVER_ID);
     }
