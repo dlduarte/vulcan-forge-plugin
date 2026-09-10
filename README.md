@@ -1,11 +1,21 @@
 # Vulcan Forge Plugin
 
-Plugin de publicação de artefatos compatível com **Maven** e **Gradle**, rodando em
+Publicação de artefatos para **Maven**, **Gradle** e **.NET**, rodando em
 **Linux e Windows**. Publica em um servidor **Nexus** ou no **GitHub Packages**, em duas
 formas **independentes** (comandos separados):
 
 1. **Imagem Docker** — a partir de um `Dockerfile` na raiz do projeto integrador.
 2. **Pacote Maven** — para distribuição via dependência (reusa o deploy nativo).
+
+> **O lado .NET é uma FERRAMENTA de linha de comando** (`dotnet tool`), e não um plugin de
+> build: o .NET não tem um ciclo de vida com pontos de extensão de terceiros em que isto se
+> encaixe, e prender a publicação da imagem a um alvo do MSBuild faria a imagem ser
+> reconstruída junto com o código — o oposto do que uma esteira de promoção precisa.
+>
+> Ela grava os **mesmos rótulos da OCI**, com a mesma ordem de detecção do commit e a mesma
+> regra de nome de variável — o que permite a uma esteira ler o rótulo de volta **sem saber qual
+> mundo construiu a imagem**. Lá o segundo goal é `nuget-publish`, que é o equivalente real do
+> `maven-publish`. Ver [`vulcan-forge-dotnet/`](vulcan-forge-dotnet/README.md).
 
 ## Goals habilitados por projeto (obrigatório)
 
