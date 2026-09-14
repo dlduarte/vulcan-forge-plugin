@@ -1,18 +1,36 @@
 name: Release (.NET / NuGet)
 
 # ==============================================================================
-# Publica a ferramenta `dlduarte.VulcanForge.Cli` no NuGet quando uma Release do
-# GitHub e criada -- o MESMO gatilho do release.yml (Maven Central).
+# Publica a ferramenta `dlduarte.VulcanForge.Cli` no NuGet.org quando uma Release
+# do GitHub e criada -- o MESMO gatilho do release.yml (Maven Central).
 #
-# POR QUE UM WORKFLOW SEPARADO, e nao um job a mais no release.yml: os dois
-# publicam em servidores diferentes, com credenciais diferentes, e um pode falhar
-# sem o outro. Juntos, uma falha de GPG no lado Java impediria a publicacao do
-# pacote .NET -- e, pior, o contrario tambem: um `dotnet nuget push` vermelho
-# deixaria a Release parecendo que nada foi publicado, quando os tres jars ja
-# estariam no Central (de onde NAO se apaga).
+# ------------------------------------------------------------------------------
+# TRUSTED PUBLISHING: NAO HA CHAVE DE LONGA DURACAO AQUI
+# ------------------------------------------------------------------------------
+# O nuget.org recomenda OIDC em vez de API key, e e o que este workflow usa.
+# O fluxo, em quatro passos:
 #
-# ⚠️ EXIGE O SECRET `NUGET_API_KEY`. Ele NAO existe neste repositorio hoje.
-# Ver PUBLISHING.md, secao "6. Publicar a ferramenta .NET".
+#   1. o GitHub emite um token OIDC de vida curta para ESTE job, assinado por ele;
+#   2. a acao `NuGet/login` manda esse token ao nuget.org;
+#   3. o nuget.org valida a assinatura e confere os dados do token (dono,
+#      repositorio, ARQUIVO DE WORKFLOW) contra a politica cadastrada;
+#   4. batendo, devolve uma API key TEMPORARIA, valida por 1 HORA.
+#
+# O que se ganha nao e comodidade: e que nao existe segredo para vazar, nem para
+# rotacionar. Uma API key comum vale ate alguem lembrar de troca-la; esta morre
+# em uma hora e serve uma vez so.
+#
+# ⚠️ POR ISSO O LOGIN VEM DEPOIS DO BUILD E DOS TESTES, e nao no comeco: a chave
+# vale 1 hora, e pedi-la cedo demais e o caminho para ela expirar no meio de um
+# job lento. Pede-se logo antes de empurrar.
+#
+# ⚠️ E POR ISSO O `permissions: id-token: write` NAO E OPCIONAL. Sem ele o GitHub
+# nao emite o token, e a acao falha com uma mensagem sobre OIDC que nao diz que
+# falta uma linha de permissao.
+#
+# ⚠️ A POLITICA ESTA AMARRADA AO NOME DESTE ARQUIVO (`release-dotnet.yml`).
+# Renomea-lo quebra a publicacao, e o erro aparece como token recusado -- nao como
+# "arquivo renomeado". Renomeou? Atualize a politica no nuget.org.
 # ==============================================================================
 
 on:
@@ -23,8 +41,12 @@ on:
 jobs:
   publish:
     runs-on: ubuntu-latest
+
     permissions:
       contents: read
+      # Habilita a emissao do token OIDC para este job. Ver o cabecalho.
+      id-token: write
+
     defaults:
       run:
         working-directory: vulcan-forge-dotnet
@@ -53,31 +75,41 @@ jobs:
       - name: Pack
         run: dotnet pack src/VulcanForge.Cli/VulcanForge.Cli.csproj -c Release -o ./nupkg
 
-      # A GUARDA VEM ANTES DO PUSH, e falha com mensagem em vez de publicar sem
-      # credencial: sem a chave, o `dotnet nuget push` tentaria anonimo e o
-      # nuget.org responderia 401 -- um erro que nao fala de secret faltando.
-      - name: Conferir a credencial
+      # A GUARDA VEM ANTES DO LOGIN, e falha com mensagem em vez de deixar a acao
+      # reclamar: `NUGET_USER` vazio produziria um erro do nuget.org sobre token
+      # invalido, que nao fala de configuracao faltando.
+      #
+      # E o NOME DE PERFIL do nuget.org, NAO o e-mail -- confundir os dois e o
+      # erro mais comum aqui, e ele tambem aparece como token recusado.
+      - name: Conferir o usuario do nuget.org
         env:
-          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+          NUGET_USER: ${{ secrets.NUGET_USER }}
         run: |
-          if [ -z "${NUGET_API_KEY}" ]; then
-            echo "::error::O secret NUGET_API_KEY nao esta configurado neste repositorio."
-            echo "Crie a chave em https://www.nuget.org/account/apikeys (escopo: Push)"
-            echo "e cadastre em Settings > Secrets and variables > Actions."
+          if [ -z "${NUGET_USER}" ]; then
+            echo "::error::O secret NUGET_USER nao esta configurado neste repositorio."
+            echo "Ele e o NOME DE PERFIL do nuget.org (o mesmo do campo 'Package Owner'"
+            echo "da politica de Trusted Publishing), e NAO o e-mail da conta."
+            echo "Cadastre em Settings > Secrets and variables > Actions."
             echo "Ver PUBLISHING.md, secao 6."
             exit 1
           fi
+
+      # ---------- O login: OIDC -> chave temporaria ----------
+      # Logo antes do push, de proposito: a chave vale 1 hora.
+      - name: NuGet login (OIDC)
+        uses: NuGet/login@v1
+        id: login
+        with:
+          user: ${{ secrets.NUGET_USER }}
 
       # `--skip-duplicate` porque republicar a mesma versao e quase sempre
       # repeticao de job (uma Release reeditada, por exemplo), e nao erro de quem
       # publica. Sem ele, isso derrubaria o workflow.
       - name: Publish
-        env:
-          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
         run: |
           dotnet nuget push ./nupkg/*.nupkg \
             --source https://api.nuget.org/v3/index.json \
-            --api-key "${NUGET_API_KEY}" \
+            --api-key "${{ steps.login.outputs.NUGET_API_KEY }}" \
             --skip-duplicate
 
       - uses: actions/upload-artifact@v4
