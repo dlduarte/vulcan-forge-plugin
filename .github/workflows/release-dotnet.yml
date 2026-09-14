@@ -1,0 +1,87 @@
+name: Release (.NET / NuGet)
+
+# ==============================================================================
+# Publica a ferramenta `dlduarte.VulcanForge.Cli` no NuGet quando uma Release do
+# GitHub e criada -- o MESMO gatilho do release.yml (Maven Central).
+#
+# POR QUE UM WORKFLOW SEPARADO, e nao um job a mais no release.yml: os dois
+# publicam em servidores diferentes, com credenciais diferentes, e um pode falhar
+# sem o outro. Juntos, uma falha de GPG no lado Java impediria a publicacao do
+# pacote .NET -- e, pior, o contrario tambem: um `dotnet nuget push` vermelho
+# deixaria a Release parecendo que nada foi publicado, quando os tres jars ja
+# estariam no Central (de onde NAO se apaga).
+#
+# ⚠️ EXIGE O SECRET `NUGET_API_KEY`. Ele NAO existe neste repositorio hoje.
+# Ver PUBLISHING.md, secao "6. Publicar a ferramenta .NET".
+# ==============================================================================
+
+on:
+  release:
+    types: [ created ]
+  workflow_dispatch:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: vulcan-forge-dotnet
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      # OS DOIS SDKs, porque o pacote e multi-alvo (net8.0 e net10.0). Com um so,
+      # o build do outro alvo falha por falta do pacote de referencia -- e a falha
+      # apareceria aqui, na publicacao, que e o pior momento.
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+
+      # OS TESTES RODAM ANTES DE PUBLICAR, e nao so no CI de PR. Um pacote no
+      # NuGet nao se apaga: a versao fica listada para sempre (o `unlist` apenas a
+      # esconde da busca). O custo de rodar 58 testes aqui e de segundos; o de
+      # publicar uma versao quebrada e permanente.
+      - name: Test
+        run: dotnet test -c Release
+
+      - name: Pack
+        run: dotnet pack src/VulcanForge.Cli/VulcanForge.Cli.csproj -c Release -o ./nupkg
+
+      # A GUARDA VEM ANTES DO PUSH, e falha com mensagem em vez de publicar sem
+      # credencial: sem a chave, o `dotnet nuget push` tentaria anonimo e o
+      # nuget.org responderia 401 -- um erro que nao fala de secret faltando.
+      - name: Conferir a credencial
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+        run: |
+          if [ -z "${NUGET_API_KEY}" ]; then
+            echo "::error::O secret NUGET_API_KEY nao esta configurado neste repositorio."
+            echo "Crie a chave em https://www.nuget.org/account/apikeys (escopo: Push)"
+            echo "e cadastre em Settings > Secrets and variables > Actions."
+            echo "Ver PUBLISHING.md, secao 6."
+            exit 1
+          fi
+
+      # `--skip-duplicate` porque republicar a mesma versao e quase sempre
+      # repeticao de job (uma Release reeditada, por exemplo), e nao erro de quem
+      # publica. Sem ele, isso derrubaria o workflow.
+      - name: Publish
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+        run: |
+          dotnet nuget push ./nupkg/*.nupkg \
+            --source https://api.nuget.org/v3/index.json \
+            --api-key "${NUGET_API_KEY}" \
+            --skip-duplicate
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nupkg-publicado
+          path: vulcan-forge-dotnet/nupkg/*.nupkg
+          retention-days: 30
