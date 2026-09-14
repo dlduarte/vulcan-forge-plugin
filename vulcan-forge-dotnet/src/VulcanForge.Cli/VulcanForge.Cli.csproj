@@ -18,10 +18,22 @@
     <ToolCommandName>vulcan-forge</ToolCommandName>
     <PackageId>dlduarte.VulcanForge.Cli</PackageId>
     <PackageTags>docker;oci;nexus;ci;publish</PackageTags>
+    <!--
+      COM ACENTO, ao contrario do resto do projeto: a regra de escrever sem acento vale
+      para o texto que sai em log de terminal. A <Description> nao sai em terminal - ela
+      e o resumo renderizado na pagina do pacote no NuGet.org.
+    -->
     <Description>
       Publica imagem Docker (e pacote NuGet) a partir de um projeto .NET, gravando os
-      rotulos da OCI. E o irmao .NET dos plugins Maven e Gradle do Vulcan Forge.
+      rótulos da OCI. É o irmão .NET dos plugins Maven e Gradle do Vulcan Forge.
     </Description>
+
+    <!--
+      O README vai DENTRO do pacote: a pagina do NuGet.org so mostra a documentacao que
+      o proprio .nupkg carrega - ela nao busca o README do repositorio. Sem isto, a
+      pagina fica com o aviso "Your package is missing a README" e so a <Description>.
+    -->
+    <PackageReadmeFile>README.md</PackageReadmeFile>
 
     <RootNamespace>VulcanForge</RootNamespace>
     <AssemblyName>vulcan-forge</AssemblyName>
@@ -32,6 +44,9 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="VulcanForge.Tests" />
+
+    <!-- O README do lado .NET, na raiz do pacote, onde o <PackageReadmeFile> o procura. -->
+    <None Include="../../README.md" Pack="true" PackagePath="/" />
   </ItemGroup>
 
 </Project>
