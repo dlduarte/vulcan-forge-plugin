@@ -123,6 +123,25 @@ Criar a **Release** no GitHub (tag `vX.Y.Z`) dispara
 [`release-dotnet.yml`](.github/workflows/release-dotnet.yml), que **roda os testes**, empacota e
 publica.
 
+#### ⚠️ A PRIMEIRA publicação do pacote .NET é pelo `workflow_dispatch`, e não por uma Release
+
+O lado .NET nasceu **depois** da `v1.3.0`, e a versão é a mesma dos dois lados (ver 6.4). Isso
+cria um descompasso só na primeira vez:
+
+- a tag `v1.3.0` **já existe**, e os três jars já estão no Maven Central — de onde não se
+  apaga. Recriar a Release não republicaria nada de útil;
+- o pacote `dlduarte.VulcanForge.Cli 1.3.0` **nunca foi publicado**, porque o workflow dele
+  ainda não existia.
+
+Então, para a primeira vez: em *Actions → **Release (.NET / NuGet)** → Run workflow*, na
+`main`. Ele publica o `1.3.0` no NuGet **sem tocar em tag nem no Maven Central**.
+
+> **Por que não subir para `1.4.0` só para ter uma Release nova:** isso republicaria os três
+> módulos Java no Central sem nenhuma mudança neles, e exigiria bump no `pom.xml` da raiz. O
+> `workflow_dispatch` resolve o descompasso sem inventar uma versão.
+
+**Da 1.4.0 em diante os dois andam juntos de novo**, pelo gatilho normal da Release.
+
 Os testes rodam aqui, e não só no CI de PR, por um motivo que não tem volta: **um pacote no
 NuGet não se apaga**. A versão fica listada para sempre — o `unlist` apenas a esconde da
 busca. Segundos de teste contra um erro permanente.
