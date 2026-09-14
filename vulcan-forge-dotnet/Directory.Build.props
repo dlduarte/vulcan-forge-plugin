@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ==============================================================================
+  Propriedades comuns do lado .NET do Vulcan Forge.
+
+  A VERSAO ACOMPANHA A DO LADO JAVA, e isso e proposital: `vulcan-forge` e um
+  produto so, com tres hospedeiros (Maven, Gradle e agora o .NET). Duas linhas de
+  versao independentes obrigariam quem le uma esteira a descobrir qual numero se
+  aplica a qual mundo.
+
+  A consequencia aceita: uma correcao que so toca o lado Java sobe a versao daqui
+  tambem. E o preco de um numero so, e ele e menor que o da confusao.
+  ==============================================================================
+-->
+<Project>
+
+  <PropertyGroup>
+    <Version>1.3.0</Version>
+    <Authors>David Duarte</Authors>
+    <Company>dlduarte</Company>
+    <PackageProjectUrl>https://github.com/dlduarte/vulcan-forge-plugin</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/dlduarte/vulcan-forge-plugin</RepositoryUrl>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+</Project>

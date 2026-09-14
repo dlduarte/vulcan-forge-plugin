@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+
+    <!--
+      MULTI-ALVO, e isso nao e zelo: a ferramenta roda DENTRO da imagem do SDK do
+      job de CI, e uma imagem `sdk:8.0` traz so o runtime 8. Um pacote alvo unico
+      em net10.0 nao rodaria la, e a falha seria na hora de publicar a imagem - o
+      pior momento.
+
+      Com os dois alvos, o `dotnet tool` escolhe o que couber na imagem em uso.
+    -->
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+
+    <!-- Empacota como ferramenta de linha de comando (`dotnet tool`). -->
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>vulcan-forge</ToolCommandName>
+    <PackageId>dlduarte.VulcanForge.Cli</PackageId>
+    <PackageTags>docker;oci;nexus;ci;publish</PackageTags>
+    <Description>
+      Publica imagem Docker (e pacote NuGet) a partir de um projeto .NET, gravando os
+      rotulos da OCI. E o irmao .NET dos plugins Maven e Gradle do Vulcan Forge.
+    </Description>
+
+    <RootNamespace>VulcanForge</RootNamespace>
+    <AssemblyName>vulcan-forge</AssemblyName>
+
+    <!-- Os testes precisam alcancar as classes internas. -->
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="VulcanForge.Tests" />
+  </ItemGroup>
+
+</Project>

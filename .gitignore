@@ -5,6 +5,11 @@ build/
 *.class
 *.log
 
+# Build output (.NET)
+bin/
+obj/
+nupkg/
+
 # IDE
 .idea/
 *.iml

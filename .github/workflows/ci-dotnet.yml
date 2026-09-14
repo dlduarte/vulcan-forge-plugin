@@ -1,0 +1,62 @@
+# ==============================================================================
+# CI do lado .NET.
+#
+# Separado do `ci.yml` de proposito: aquele monta um JDK e roda `mvn verify`, e
+# nada do lado .NET depende do build Java. Num workflow so, uma falha do Maven
+# esconderia o resultado dos testes daqui (e vice-versa), e o tempo de fila seria
+# a soma dos dois.
+#
+# `paths:` para nao rodar em mudanca que nao toca este lado -- o que tambem evita
+# que uma correcao no plugin Gradle apareca como "CI do .NET passou".
+# ==============================================================================
+name: CI (.NET)
+
+on:
+  push:
+    branches: [ main, master ]
+    paths:
+      - 'vulcan-forge-dotnet/**'
+      - '.github/workflows/ci-dotnet.yml'
+  pull_request:
+    branches: [ main, master ]
+    paths:
+      - 'vulcan-forge-dotnet/**'
+      - '.github/workflows/ci-dotnet.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: vulcan-forge-dotnet
+    steps:
+      - uses: actions/checkout@v5
+
+      # OS DOIS SDKs, porque o pacote e multi-alvo (net8.0 e net10.0) -- ver o
+      # comentario do <TargetFrameworks> em VulcanForge.Cli.csproj. Com um so, o
+      # build do outro alvo falha por falta do pacote de referencia.
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build -c Release --no-restore
+
+      - name: Test
+        run: dotnet test -c Release --no-build --verbosity normal
+
+      # Empacotar no CI prova que o `PackAsTool` continua valido -- um erro ali so
+      # apareceria na hora de publicar, que e tarde.
+      - name: Pack
+        run: dotnet pack src/VulcanForge.Cli/VulcanForge.Cli.csproj -c Release -o ./nupkg
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nupkg
+          path: vulcan-forge-dotnet/nupkg/*.nupkg
+          retention-days: 7
